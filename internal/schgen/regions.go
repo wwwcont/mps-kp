@@ -16,7 +16,7 @@ func (s *Sheet) Regions() map[string]Rect {
 		"dec":   {"dec"},
 		"kb":    {"kb173", "buf", "and", "or", "vd", "sb", "pull", "ser", "ck"},
 		"ind":   {"latchInd", "norInd", "rseg", "hg"},
-		"idt":   {"idt", "xsX2"},
+		"idt":   {"idt", "xsX2", "regAL", "regAH", "norAL", "norAH"},
 		"y2":    {"latchY2", "norY2", "xsY"},
 		"power": {"xsPwr", "filter"},
 	}

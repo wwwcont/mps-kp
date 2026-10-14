@@ -82,12 +82,37 @@ func (s *Sheet) busMarks() {
 		marks = append(marks, mark{l.name, nb, w, l, ch})
 		names[l.name] = true
 	}
-	num := busNumbers(names)
+	// номера — в каждой шине свои, с 1 (замечание Михалина 14.10.2026: «нумерация контактов в шинах не сквозная, в каждой шине
+	// начинаем с 1»), по порядку, как элементы: столбцами слева направо, в столбце сверху вниз («нумерация проводников подчиняется
+	// правилу нумерации элементов»). Номер линии — по первому её входу в этом порядке.
+	_ = names
+	group := s.busGroups()
+	type key struct {
+		g    int
+		name string
+	}
+	num := map[key]int{}
+	order := append([]mark(nil), marks...)
+	sort.SliceStable(order, func(i, j int) bool {
+		a, b := order[i].on, order[j].on
+		if math.Abs(a.X-b.X) > 2.54 {
+			return a.X < b.X
+		}
+		return a.Y < b.Y
+	})
+	next := map[int]int{}
+	for _, m := range order {
+		k := key{group(m.on), m.name}
+		if _, ok := num[k]; !ok {
+			next[k.g]++
+			num[k] = next[k.g]
+		}
+	}
 	moved := map[*lab]bool{}
 	fs := s.labelFont()
 	for _, m := range marks {
 		// номер у точки входа, со стороны провода, над ним
-		n := strconv.Itoa(num[m.name])
+		n := strconv.Itoa(num[key{group(m.on), m.name}])
 		vertBus := math.Abs(m.w.X-m.on.X) > math.Abs(m.w.Y-m.on.Y)
 		var at Pt
 		just := "left"
@@ -95,7 +120,7 @@ func (s *Sheet) busMarks() {
 		up := true
 		for _, seg := range m.chainW {
 			for _, p := range seg {
-				if p.Y < m.on.Y-0.01 && p.Y > m.on.Y-1.6 {
+				if p.Y < m.on.Y-0.01 && p.Y > m.on.Y-1.6 && math.Abs(p.X-m.on.X) < 3.3 { // провод над местом номера
 					up = false
 				}
 			}
@@ -244,4 +269,48 @@ func busNumbers(names map[string]bool) map[string]int {
 		out[n] = i + 1
 	}
 	return out
+}
+
+// busGroups — номер связной шины (отрезки, касающиеся друг друга концами или концом середины) для точки на шине.
+func (s *Sheet) busGroups() func(Pt) int {
+	par := make([]int, len(s.buses))
+	for i := range par {
+		par[i] = i
+	}
+	var find func(int) int
+	find = func(i int) int {
+		for par[i] != i {
+			par[i] = par[par[i]]
+			i = par[i]
+		}
+		return i
+	}
+	touch := func(a, b [2]Pt) bool {
+		for _, p := range a {
+			if p.eq(b[0]) || p.eq(b[1]) || onSegInner(b[0], b[1], p) {
+				return true
+			}
+		}
+		for _, p := range b {
+			if onSegInner(a[0], a[1], p) {
+				return true
+			}
+		}
+		return false
+	}
+	for i := range s.buses {
+		for j := i + 1; j < len(s.buses); j++ {
+			if touch(s.buses[i], s.buses[j]) {
+				par[find(i)] = find(j)
+			}
+		}
+	}
+	return func(p Pt) int {
+		for i, b := range s.buses {
+			if p.eq(b[0]) || p.eq(b[1]) || onSegInner(b[0], b[1], p) {
+				return find(i)
+			}
+		}
+		return -1
+	}
 }

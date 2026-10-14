@@ -179,6 +179,12 @@ func ParsePin(s string) (Pin, error) {
 
 func (p Pin) String() string { return fmt.Sprintf("P%d.%d", p.Port, p.Bit) }
 
+// Имена регистров адреса правого порта в Devices.
+const (
+	HeadLo = "Регистр адреса правого порта (A0–A7)"
+	HeadHi = "Регистр адреса правого порта (A8–A12)"
+)
+
 // Device — внешнее устройство на шине.
 type Device struct {
 	Name    string `json:"name"`
@@ -400,6 +406,17 @@ func (p *Params) decoderCS(cs map[string]string, order []string) error {
 			free = append(free, fmt.Sprintf("Y%d", n))
 		}
 	}
+	// адрес правого порта IDT7005 («голова» для записи X2 внешним устройством) держат два регистра 573 — на двух младших свободных
+	// выходах дешифратора (замечание Михалина 14.10.2026: «включение DD10 по прежнему не верно»; методичка-2026 с. 14: шину
+	// внешнего устройства делаем мы, указатели ведёт МК)
+	if len(free) < 2 {
+		return fmt.Errorf("у дешифратора нет двух свободных выходов под регистры адреса правого порта")
+	}
+	for i, name := range []string{HeadLo, HeadHi} {
+		n := int(free[i][1] - '0')
+		p.Devices = append(p.Devices, Device{Name: name, CS: free[i], Base: n << 13, WinSize: 8192})
+	}
+	free = free[2:]
 	p.UnusedCS = strings.Join(free, ", ")
 	if p.V > 8192 {
 		return fmt.Errorf("V=%d > 8192: буфер больше IDT7005", p.V)

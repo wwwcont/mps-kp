@@ -98,7 +98,9 @@ func TestA12M14_2026(t *testing.T) {
 	check("y2", p.Dev("Регистр Y2").CS+" "+Hex(p.Dev("Регистр Y2").Base), "Y6 0C000h")
 	check("ind", p.Dev("Индикатор").CS+" "+Hex(p.Dev("Индикатор").Base), "Y7 0E000h")
 	check("kb", p.Dev("Клавиатура").CS+" "+Hex(p.Dev("Клавиатура").Base), "Y1 2000h")
-	check("unused", p.UnusedCS, "Y0, Y2, Y3, Y4")
+	check("head lo", p.Dev(HeadLo).CS+" "+Hex(p.Dev(HeadLo).Base), "Y0 0h")
+	check("head hi", p.Dev(HeadHi).CS+" "+Hex(p.Dev(HeadHi).Base), "Y2 4000h")
+	check("unused", p.UnusedCS, "Y3, Y4")
 	check("fill", p.FillTimeS, 436.0)
 	check("prog3", p.M%3, 2)
 }
