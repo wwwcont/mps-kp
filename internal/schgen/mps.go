@@ -53,6 +53,7 @@ const (
 	nALE   = "ALE"
 	nY1    = "~{Y1stb}"
 	nY2    = "~{Y2stb}"
+	nRDbuf = "~{RD_buf}" // CE левого порта IDT7005 = ИЛИ(CS_buf, RD): левый порт выбран только при чтении буфера
 )
 
 // Координаты шин (мм, сетка 1,27).
@@ -815,7 +816,7 @@ func (b *builder) rowsAndInt() {
 			b.nc(u.Pin(outs[r]))
 		}
 	}
-	for i, n := range []string{"9", "7", "5", "3"} {
+	for i, n := range []string{"3", "5", "7", "9"} { // 2Y0…2Y3 → AD4…AD7 по порядку
 		if v.Decoder {
 			b.tapRight(u.Pin(n), xBD, fmt.Sprintf("AD%d", 4+i))
 		} else {
@@ -825,11 +826,15 @@ func (b *builder) rowsAndInt() {
 
 	// 1OE, 2OE ← ИЛИ(CSkb, RD): чтение строк только при обращении к клавиатуре
 	// вентиль отодвинут от шины: метка ~{CS_kbd} у входа в шину не наезжает на номер вывода
-	g := b.role("or", b.Sym("74HC32", "DD9", "74HC32", Pt{218.44, 213.36}, SymOpt{Unit: 1,
+	orU, orA, orB, orY := 1, "1", "2", "3"
+	if v.Decoder { // ТЗ-2026: часть 1 — CE левого порта IDT7005 (выше и левее), эта — вторая
+		orU, orA, orB, orY = 2, "4", "5", "6"
+	}
+	g := b.role("or", b.Sym("74HC32", "DD9", "74HC32", Pt{218.44, 213.36}, SymOpt{Unit: orU,
 		RefAt: ptr(Pt{215.9, 207.01}), RefJust: "left", HideVal: true}))
-	b.tapLeft(g.Pin("1"), xBD, nCSkb)
-	b.tapLeft(g.Pin("2"), xBD, nRD)
-	o := g.Pin("3")
+	b.tapLeft(g.Pin(orA), xBD, nCSkb)
+	b.tapLeft(g.Pin(orB), xBD, nRD)
+	o := g.Pin(orY)
 	oe1, oe2 := u.Pin("1"), u.Pin("19")
 	loopY := max(220.98, b.rowY(v.Rows-1)+5.08) // ниже выхода DD9.1 и последней строки клавиатуры
 	b.Wire(o, Pt{228.6, o.Y}, Pt{228.6, loopY}, Pt{157.48, loopY}, Pt{157.48, oe1.Y}, oe1)
@@ -965,7 +970,7 @@ func (b *builder) notes() {
 		"Примечания",
 		fmt.Sprintf("1. %s подключить в непосредственной близости от выводов питания микросхем DD1–DD%d.", refRanges(b.filterCs), len(b.filterCs)),
 		fmt.Sprintf("2. %s — вывод 7 на GND, вывод 14 к +5 В.", joinRefs(nor, and, or)),
-		fmt.Sprintf("3. Неиспользуемые входы к GND: %s%s выв. %s; %s выв. 4, 5, 9, 10, 12, 13.", map[bool]string{false: nor + " выв. 8, 9, 11, 12; ", true: ""}[b.v.Decoder], and, andUnused, or),
+		fmt.Sprintf("3. Неиспользуемые входы к GND: %s%s выв. %s; %s выв. %s.", map[bool]string{false: nor + " выв. 8, 9, 11, 12; ", true: ""}[b.v.Decoder], and, andUnused, or, map[bool]string{false: "4, 5, 9, 10, 12, 13", true: "9, 10, 12, 13"}[b.v.Decoder]),
 		fmt.Sprintf("4. %s, %s устанавливать рядом с ZQ1.", b.Roles["cX1"].Ref, b.Roles["cX2"].Ref),
 	}
 	if b.Fixes != nil {
@@ -1109,8 +1114,16 @@ func (b *builder) idt26(u *Comp) {
 	if n <= 0 || n > 13 {
 		n = 13
 	}
-	// левый порт — МК, только чтение
-	b.tapLeft(u.Pin("59"), xBI, nCSbuf)
+	// левый порт — МК, только чтение. CEL = ИЛИ(CS_buf, RD): в режиме master при одновременном обращении обоих портов к одной
+	// ячейке логика BUSY может заблокировать запись правого порта («Writes to the right port are internally ignored when BUSYR
+	// outputs are driving low», даташит IDT7005, табл. II, прим. 3). Левый порт выбран только при чтении — запись X2 правым
+	// портом по WR никогда не совпадает с обращением слева.
+	g := b.role("orBuf", b.Sym("74HC32", "DD9", "74HC32", Pt{185.42, 74.93}, SymOpt{Unit: 1,
+		RefAt: ptr(Pt{180.34, 68.33}), RefJust: "left", HideVal: true}))
+	b.tapLeft(g.Pin("1"), xBY, nCSbuf)
+	b.tapLeft(g.Pin("2"), xBY, nRD)
+	b.tapRight(g.Pin("3"), xBI, nRDbuf)
+	b.tapLeft(u.Pin("59"), xBI, nRDbuf)
 	b.tapLeft(u.Pin("62"), xBI, nRD)
 	xl := u.Pin("61").X - 2.54
 	// R/WL, SEML, M/S → +5 В (входы): у каждого свой знак — общая вертикаль шла бы мимо свободных BUSY и INT, как будто и они на питании
@@ -1198,7 +1211,7 @@ func (b *builder) buses26() {
 	b.Bus(Pt{xBM, yH1}, Pt{xBK, yH1}, Pt{xBK, 177.8})
 	b.Bus(Pt{xBM, yH2}, Pt{xR26, yH2})
 	b.Bus(Pt{xBD, yH2}, Pt{xBD, 218.44})
-	b.Bus(Pt{xBY, 88.9}, Pt{xBY, yH2})
+	b.Bus(Pt{xBY, 69.85}, Pt{xBY, yH2}) // выше дешифратора — к вентилю CE левого порта IDT7005
 	b.Bus(Pt{xR26, 38.1}, Pt{xR26, yH2}) // кончается на yH2 — Т-образно, без креста (Михалин 19.10: «крестообразное пересечение шин — отсутствие соединений»)
 }
 

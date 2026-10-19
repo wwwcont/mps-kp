@@ -180,7 +180,7 @@ func expected(v Variant, roles map[string]*Comp) map[string][]string {
 		case i < v.Rows || v.Decoder && i < 4:
 			m = append(m, r("buf", outs244[i]))
 		case v.Decoder: // ТЗ-2026: все 8 выходов 244 на шине данных
-			m = append(m, r("buf", []int{9, 7, 5, 3}[i-4]))
+			m = append(m, r("buf", []int{3, 5, 7, 9}[i-4]))
 		}
 		if i < 4 {
 			m = append(m, r("kb173", 14-i))
@@ -231,8 +231,9 @@ func expected(v Variant, roles map[string]*Comp) map[string][]string {
 		}
 	}
 	e["CSbuf"] = []string{mp(v.CS.Buf), r("idt", 59)}
-	if v.Decoder {
-		e["CSbuf"] = append(e["CSbuf"], r("idt", 22))
+	if v.Decoder { // CER ← CS_buf; CEL = ИЛИ(CS_buf, RD) на DD9.2
+		e["CSbuf"] = []string{mp(v.CS.Buf), r("idt", 22), r("orBuf", 1)}
+		e["RDbuf"] = []string{r("orBuf", 3), r("idt", 59)}
 	}
 	e["CSy2"] = []string{mp(v.CS.Y2), r("norY2", 2)}
 	e["CSkb"] = []string{mp(v.CS.Kb), r("kb173", 9), r("kb173", 10), r("or", 1)}
@@ -242,6 +243,10 @@ func expected(v Variant, roles map[string]*Comp) map[string][]string {
 		e["WR"] = []string{r("mcu", 16), r("norY2", 3), r("norInd", 6), r("kb173", 7), r("idt", 20)}
 	}
 	e["RD"] = []string{r("mcu", 17), r("idt", 62), r("or", 2)}
+	if v.Decoder { // 244 OE — часть 2 вентиля ИЛИ (выв. 4, 5, 6)
+		e["RD"] = []string{r("mcu", 17), r("idt", 62), r("or", 5), r("orBuf", 2)}
+		e["CSkb"] = []string{mp(v.CS.Kb), r("kb173", 9), r("kb173", 10), r("or", 4)}
+	}
 	e["ALE"] = []string{r("mcu", 30), r("latchA", 11)}
 	e["Y1"] = []string{r("mcu", mcuPin(v.Y1)), rc("xsY", 1)}
 	e["Y2"] = []string{r("mcu", mcuPin(v.Y2)), rc("xsY", 2)}
@@ -258,6 +263,9 @@ func expected(v Variant, roles map[string]*Comp) map[string][]string {
 		e["INTx2"] = []string{r("mcu", intPin[v.X2Int]), rc("xsX2", 1), r("rX2", 2)}
 	}
 	e["OE244"] = []string{r("or", 3), r("buf", 1), r("buf", 19)}
+	if v.Decoder {
+		e["OE244"] = []string{r("or", 6), r("buf", 1), r("buf", 19)}
+	}
 	e["LoadY2"] = []string{r("norY2", 1), r("latchY2", 11)}
 	e["LoadInd"] = []string{r("norInd", 4), r("latchInd", 11)}
 	e["RST"] = []string{r("mcu", 9), r("cRst", 2), r("rRst", 1), r("kb173", 15)}
