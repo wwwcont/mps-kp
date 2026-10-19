@@ -438,8 +438,8 @@ func (b *builder) y2Reg() {
 	}
 	// Load = ИЛИ-НЕ(CSy2, WR): вентиль в столбце защёлок под дешифратором, входы — с шины у МК, выход через шину xBY к Load
 	ld := u.Pin("11")
-	// ниже Load на 5,08: над вентилем — земля дешифратора
-	gy := ld.Y + 5.08
+	// ниже Load на 7,62: над вентилем — земля дешифратора, между ними ≥ 2,5 мм (иначе «пересечение УГО», как DD3.1/C2)
+	gy := ld.Y + 7.62
 	g := b.role("norY2", b.Sym("74HC02", "DD1", "74HC02", Pt{147.32, gy}, SymOpt{Unit: 1,
 		RefAt: ptr(Pt{147.32, gy - 6.6}), RefJust: "left", HideVal: true})) // над вентилем, правее земли дешифратора
 	// выход — через шину xBY (вход и выход шины на разной высоте), а не проводом поперёк неё (проверка листов 09.10.2026)
@@ -970,7 +970,7 @@ func (b *builder) notes() {
 		"Примечания",
 		fmt.Sprintf("1. %s подключить в непосредственной близости от выводов питания микросхем DD1–DD%d.", refRanges(b.filterCs), len(b.filterCs)),
 		fmt.Sprintf("2. %s — вывод 7 на GND, вывод 14 к +5 В.", joinRefs(nor, and, or)),
-		fmt.Sprintf("3. Неиспользуемые входы к GND: %s%s выв. %s; %s выв. %s.", map[bool]string{false: nor + " выв. 8, 9, 11, 12; ", true: ""}[b.v.Decoder], and, andUnused, or, map[bool]string{false: "4, 5, 9, 10, 12, 13", true: "9, 10, 12, 13"}[b.v.Decoder]),
+		fmt.Sprintf("3. Неиспользуемые входы к GND: %s%s выв. %s; %s выв. %s.", nor+" выв. 8, 9, 11, 12; ", and, andUnused, or, map[bool]string{false: "4, 5, 9, 10, 12, 13", true: "9, 10, 12, 13"}[b.v.Decoder]),
 		fmt.Sprintf("4. %s, %s устанавливать рядом с ZQ1.", b.Roles["cX1"].Ref, b.Roles["cX2"].Ref),
 	}
 	if b.Fixes != nil {
@@ -980,7 +980,7 @@ func (b *builder) notes() {
 	}
 	if b.v.Decoder {
 		// «примечание д.б. выравнено по нижнему краю к рамке» (Михалин, 16.10.2026): нижняя строка — над основной надписью
-		b.TextBottom(strings.Join(lines, "\n"), Pt{229.87 + b.Sheet.J.NoteDX, 231.14}, b.Sheet.J.NoteFont)
+		b.TextBottom(strings.Join(lines, "\n"), Pt{229.87, 231.14}, b.Sheet.J.NoteFont) // левый край — по левому краю штампа
 		return
 	}
 	b.Text(strings.Join(lines, "\n"), Pt{229.87 + b.Sheet.J.NoteDX, 206.375 + b.notesDY() + b.Sheet.J.NoteDY}, b.Sheet.J.NoteFont)

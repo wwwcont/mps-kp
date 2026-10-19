@@ -128,20 +128,20 @@ func gostifyIC(sym *schgen.Node, g gostIC) {
 				orig := nm.Arg(0)
 				// активный ноль — кружком инверсии на выводе, без надчёркивания в имени (ГОСТ 2.743; единообразно для всех УГО)
 				// только если надчёркнуто всё имя (R/~{W}, M/~{S} — частичное: остаётся надчёркивание, кружка нет)
-				core := orig
+				// сначала короткое имя (~{EA}/VPP → ~{EA}), потом правило кружка — иначе EA оставался с надчёркиванием при PSEN с кружком
+				final := orig
+				if r, ok := g.rename[orig]; ok {
+					final = r
+				}
+				core := final
 				if strings.HasSuffix(core, "}L") || strings.HasSuffix(core, "}R") { // IDT7005: ~{CE}L
 					core = core[:len(core)-1]
 				}
 				if strings.HasPrefix(core, "~{") && strings.HasSuffix(core, "}") && strings.Count(core, "~{") == 1 && pin.Arg(0) != "power_in" {
 					pin.Kids[2] = schgen.A("inverted")
-					nm.Kids[1] = schgen.Q(strings.NewReplacer("~{", "", "}", "").Replace(orig))
+					final = strings.NewReplacer("~{", "", "}", "").Replace(final)
 				}
-				if r, ok := g.rename[orig]; ok {
-					if pin.Arg(0) == "inverted" || pin.Kids[2].Atom == "inverted" {
-						r = strings.NewReplacer("~{", "", "}", "").Replace(r)
-					}
-					nm.Kids[1] = schgen.Q(r)
-				}
+				nm.Kids[1] = schgen.Q(final)
 				// выводы питания на ГОСТ-УГО без имён — только номера (иначе налезают на основное поле)
 				if pin.Arg(0) == "power_in" && pin.Find("hide") == nil {
 					nm.Kids[1] = schgen.Q("")

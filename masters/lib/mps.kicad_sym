@@ -10756,7 +10756,7 @@
 					)
 				)
 			)
-			(pin input inverted
+			(pin input line
 				(at -10.16 -2.54 0)
 				(length 2.54)
 				(name "&"
@@ -10774,7 +10774,7 @@
 					)
 				)
 			)
-			(pin input inverted
+			(pin input line
 				(at -10.16 -5.08 0)
 				(length 2.54)
 				(name ""
@@ -10810,7 +10810,7 @@
 					)
 				)
 			)
-			(pin output inverted
+			(pin output line
 				(at 10.16 -7.62 180)
 				(length 2.54)
 				(name "7"
@@ -10846,7 +10846,7 @@
 					)
 				)
 			)
-			(pin output inverted
+			(pin output line
 				(at 10.16 -5.08 180)
 				(length 2.54)
 				(name "6"
@@ -10864,7 +10864,7 @@
 					)
 				)
 			)
-			(pin output inverted
+			(pin output line
 				(at 10.16 -2.54 180)
 				(length 2.54)
 				(name "5"
@@ -10882,7 +10882,7 @@
 					)
 				)
 			)
-			(pin output inverted
+			(pin output line
 				(at 10.16 0 180)
 				(length 2.54)
 				(name "4"
@@ -10900,7 +10900,7 @@
 					)
 				)
 			)
-			(pin output inverted
+			(pin output line
 				(at 10.16 2.54 180)
 				(length 2.54)
 				(name "3"
@@ -10918,7 +10918,7 @@
 					)
 				)
 			)
-			(pin output inverted
+			(pin output line
 				(at 10.16 5.08 180)
 				(length 2.54)
 				(name "2"
@@ -10936,7 +10936,7 @@
 					)
 				)
 			)
-			(pin output inverted
+			(pin output line
 				(at 10.16 7.62 180)
 				(length 2.54)
 				(name "1"
@@ -10954,7 +10954,7 @@
 					)
 				)
 			)
-			(pin output inverted
+			(pin output line
 				(at 10.16 10.16 180)
 				(length 2.54)
 				(name "0"
@@ -12870,10 +12870,10 @@
 				)
 				(alternate "~{PROG}" input line)
 			)
-			(pin input line
+			(pin input inverted
 				(at -15.24 -33.02 0)
 				(length 2.54)
-				(name "~{EA}"
+				(name "EA"
 					(effects
 						(font
 							(size 1.27 1.27)
