@@ -17,6 +17,7 @@ type Variant struct {
 	KbInt      string  // INT0 | INT1 — вход МК для IRQ клавиатуры
 	X2Int      string  // второй INT — строб X2
 	Decoder    bool    // ТЗ-2026: CS — выходы 74HC138 (A13..A15, E2 = CS_EN); CS.* = "Y0".."Y7"
+	BufLines   int     // ТЗ-2026: адресных линий у IDT7005 по объёму буфера V (⌈log2 V⌉); остальные A — на землю; 0 — все 13
 	CSEn       string  // вывод МК CS_EN (P3.4)
 	Filter     string  // номинал фильтров на корпус: «68 н» (2025) / «33 н» (2026)
 	Style      Style   // вид листа (A–D), см. style.go
@@ -308,6 +309,10 @@ func (b *builder) mcu() {
 	if b.v.Decoder {
 		// ТЗ-2026: весь P2 — старший байт адреса A8..A15 (A13..A15 — на дешифратор CS)
 		for i := 0; i < 8; i++ {
+			if a := 8 + i; b.v.BufLines > 0 && a >= b.v.BufLines && a <= 12 {
+				b.nc(u.Pin(strconv.Itoa(21 + i))) // старшие адреса буфера не нужны (на IDT7005 — земля)
+				continue
+			}
 			b.tapRight(u.Pin(strconv.Itoa(21+i)), xBM, fmt.Sprintf("A%d", 8+i))
 		}
 		b.nc(u.Pin("29")) // PSEN: ПЗУ нет
@@ -419,7 +424,16 @@ func (b *builder) y2Reg() {
 	u := b.role("latchY2", b.latch573("DD5", Pt{185.42, 109.22}))
 	for i := 0; i < 8; i++ {
 		b.tapLeft(u.Pin(strconv.Itoa(2+i)), xBY, fmt.Sprintf("AD%d", i))
-		b.tapRight(u.Pin(strconv.Itoa(19-i)), xY2B, fmt.Sprintf("Y2_%d", i))
+		q := u.Pin(strconv.Itoa(19 - i))
+		if b.v.Decoder {
+			// прямо в шину слева от IDT7005 — она рядом (Михалин: «длина шин минимально возможная — зачем тянем от XS2 к DD8»);
+			// у выводов все восемь линий одинаково сдвинуты на 1,27: у шины они встают между рядами IDT7005 — без ступенек у входа
+			k := Pt{q.X + 2.54, q.Y}
+			b.Wire(q, k, Pt{k.X, q.Y + 1.27})
+			b.tapRight(Pt{k.X, q.Y + 1.27}, xBI, fmt.Sprintf("Y2_%d", i))
+			continue
+		}
+		b.tapRight(q, xY2B, fmt.Sprintf("Y2_%d", i))
 	}
 	// Load = ИЛИ-НЕ(CSy2, WR): вентиль в столбце защёлок под дешифратором, входы — с шины у МК, выход через шину xBY к Load
 	ld := u.Pin("11")
@@ -455,6 +469,10 @@ func (b *builder) idt() {
 	b.Wire(Pt{u.Pin("5").X, gy}, Pt{u.Pin("41").X, gy})
 	b.gnd(Pt{u.Pin("24").X, gy})
 
+	if b.v.Decoder {
+		b.idt26(u)
+		return
+	}
 	// левый порт — МК
 	b.tapLeft(u.Pin("59"), xBI, nCSbuf)
 	b.tapLeft(u.Pin("62"), xBI, nRD)
@@ -469,16 +487,14 @@ func (b *builder) idt() {
 	// замечание Михалина «не соответствует варианту»). BUSYL, SEML → +5 В (slave, семафоры не используются).
 	b.tapLeft(u.Pin("61"), xBI, nWR)
 	xl := u.Pin("42").X - 2.54 // от выводов: у ГОСТ-УГО корпус шире
-	for _, n := range []string{"42", "60"} {
+	// SEML, M/S → +5 В (M/S = 1 — одна микросхема, master); BUSY, INT — выходы, свободны («нельзя выходы включать к источнику» —
+	// Михалин 19.10.2026)
+	for _, n := range []string{"60", "40"} {
 		b.Wire(u.Pin(n), Pt{xl, u.Pin(n).Y})
 	}
-	b.Wire(Pt{xl, u.Pin("42").Y}, Pt{xl, u.Pin("60").Y})
-	b.Power("+5V", Pt{xl, u.Pin("42").Y}, 90)
-	// M/S → GND: режим slave, арбитраж BUSY выключен
-	ms := u.Pin("40")
-	b.Wire(ms, Pt{xl, ms.Y})
-	b.gnd(Pt{xl, ms.Y}) // земля только вниз, не повёрнута (замечание Михалина 14.10.2026: «не поворачиваем GND»)
-	b.nc(u.Pin("43"))
+	b.Wire(Pt{xl, u.Pin("60").Y}, Pt{xl, u.Pin("40").Y})
+	b.Power("+5V", Pt{xl, u.Pin("60").Y}, 90)
+	b.nc(u.Pin("42"), u.Pin("43"))
 	if b.v.Decoder {
 		// ТЗ-2026: окно 8 КБ, буфер до 2100 байт — нужны A11, A12
 		b.tapLeft(u.Pin("55"), xBI, "A11")
@@ -491,10 +507,6 @@ func (b *builder) idt() {
 		b.gnd(Pt{xl, u.Pin("56").Y + 1.27})
 	}
 
-	if b.v.Decoder {
-		b.idtRight26(u)
-		return
-	}
 	// правый порт — независимый доступ внешнего устройства (ТЗ 2.1 п. 6, п. 9 «отдельный разъём с сигналами для доступа к буферу»;
 	// замечание Михалина: включение буфера «не верно по сути»): адрес A0R–A12R, данные и строб записи — с разъёма XS2,
 	// R/WR ← строб X2 (он же INT1: МК узнаёт о новом отсчёте), CER = 0 (порт выбран всегда), OER = 1 (порт только пишет).
@@ -512,10 +524,9 @@ func (b *builder) idt() {
 	b.Sheet.LabelAtPin[nX2stb] = true
 	b.Wire(oer, Pt{xr + 5.08, oer.Y})
 	b.Power("+5V", Pt{xr + 5.08, oer.Y}, 270)
-	b.Wire(u.Pin("39"), Pt{xr, u.Pin("39").Y}, Pt{xr, u.Pin("21").Y})
 	b.Wire(u.Pin("21"), Pt{xr, u.Pin("21").Y})
-	b.Power("+5V", Pt{xr, u.Pin("39").Y}, 270)
-	b.nc(u.Pin("38"))
+	b.Power("+5V", Pt{xr, u.Pin("21").Y}, 270)
+	b.nc(u.Pin("38"), u.Pin("39"))
 	last := 12
 	if !b.v.Decoder {
 		last = 10 // ТЗ-2025: окно 2 КБ, A11R, A12R → GND
@@ -795,11 +806,21 @@ func (b *builder) rowsAndInt() {
 	}
 	b.Wire(Pt{xg, ys[0]}, Pt{xg, ys[len(ys)-1]})
 	b.gnd(Pt{xg, ys[len(ys)-1]}) // земля сразу под последним входом: ниже её планка упиралась в номер вывода EZ1 (проверка 09.10.2026)
+	// ТЗ-2026: на шину данных — все 8 выходов 244 (неиспользуемые входы на земле — читаются нули, шина не висит в третьем
+	// состоянии на старших битах; совет Гольцова 19.10.2026 «на шину данных лучше подавать все 8 бит с регистра считывания клавиатуры»)
 	for r := v.Rows; r < 4; r++ {
-		b.nc(u.Pin(outs[r]))
+		if v.Decoder {
+			b.tapRight(u.Pin(outs[r]), xBD, fmt.Sprintf("AD%d", r))
+		} else {
+			b.nc(u.Pin(outs[r]))
+		}
 	}
-	for _, n := range []string{"3", "5", "7", "9"} {
-		b.nc(u.Pin(n))
+	for i, n := range []string{"9", "7", "5", "3"} {
+		if v.Decoder {
+			b.tapRight(u.Pin(n), xBD, fmt.Sprintf("AD%d", 4+i))
+		} else {
+			b.nc(u.Pin(n))
+		}
 	}
 
 	// 1OE, 2OE ← ИЛИ(CSkb, RD): чтение строк только при обращении к клавиатуре
@@ -818,25 +839,12 @@ func (b *builder) rowsAndInt() {
 // ---------------------------------------------------------------- индикатор: DD10 + DD1.3 + R + HG1
 
 func (b *builder) indicator() {
-	dxInd := dxInd
-	if b.v.Decoder {
-		dxInd = xRegs - 238.76 // ТЗ-2026: регистр индикатора — под регистрами адреса правого порта, данные и Load — с шины xR26
-	}
 	at := Pt{238.76 + dxInd, 171.45} // центр — как у IDT7005 над ним: один столбец, нумерация однозначна
 	u := b.role("latchInd", b.latch573("DD10", at))
-	busD := xBD
-	if b.v.Decoder {
-		busD = xR26
-	}
 	for i := 0; i < 8; i++ {
-		b.tapLeft(u.Pin(strconv.Itoa(2+i)), busD, fmt.Sprintf("AD%d", i))
+		b.tapLeft(u.Pin(strconv.Itoa(2+i)), xBD, fmt.Sprintf("AD%d", i))
 	}
 	ld := u.Pin("11")
-	if b.v.Decoder {
-		b.tapLeft(ld, xR26, "LdInd") // вентиль DD1.2 — под IDT7005 (idtRight26)
-		b.indicatorOut(u, dxInd)
-		return
-	}
 	// ниже Load на 5,08: иначе верхняя грань вентиля ложится на провод D7 (замечание Михалина: «пересечения УГО, см. DD3.1»)
 	gy := ld.Y + 5.08
 	g := b.role("norInd", b.Sym("74HC02", "DD1", "74HC02", Pt{ld.X - 15.24, gy}, SymOpt{Unit: 2, // центр — под вентилем ИЛИ DD9: один столбец
@@ -915,11 +923,11 @@ func (b *builder) power() {
 	xs := x + 8.89 // последний фильтр заметно левее столбца конденсаторов клавиатуры (нумерация, NumberingDoubts)
 	pitch := 8.89
 	if b.v.Decoder {
-		xs, pitch = x+6.35, 7.62 // 13 фильтров: последний левее столбца C клавиатуры больше чем на 7,62
+		xs, pitch = x+8.89, 8.89 // 11 фильтров: последний левее столбца C клавиатуры больше чем на 7,62
 	}
 	n := 10 // по конденсатору на корпус DD
 	if b.v.Decoder {
-		n = 13 // + дешифратор и два регистра адреса правого порта
+		n = 11 // + дешифратор
 	}
 	for i := 0; i < n; i++ {
 		cx := xs + float64(i)*pitch
@@ -964,6 +972,11 @@ func (b *builder) notes() {
 		for _, l := range b.Fixes.NoteAdd {
 			lines = append(lines, fmt.Sprintf("%d. %s", len(lines), strings.TrimSpace(l)))
 		}
+	}
+	if b.v.Decoder {
+		// «примечание д.б. выравнено по нижнему краю к рамке» (Михалин, 16.10.2026): нижняя строка — над основной надписью
+		b.TextBottom(strings.Join(lines, "\n"), Pt{229.87 + b.Sheet.J.NoteDX, 231.14}, b.Sheet.J.NoteFont)
+		return
 	}
 	b.Text(strings.Join(lines, "\n"), Pt{229.87 + b.Sheet.J.NoteDX, 206.375 + b.notesDY() + b.Sheet.J.NoteDY}, b.Sheet.J.NoteFont)
 }
@@ -1025,8 +1038,6 @@ func (b *builder) decoder() {
 	// выходы Yn → CS по варианту
 	yPin := []string{"15", "14", "13", "12", "11", "10", "9", "7"}
 	cs := map[string]string{b.v.CS.Buf: nCSbuf, b.v.CS.Y2: nCSy2, b.v.CS.Ind: nCSind, b.v.CS.Kb: nCSkb}
-	lo, hi := b.csFree()
-	cs[lo], cs[hi] = nCSal, nCSah
 	for n := 0; n < 8; n++ {
 		p := u.Pin(yPin[n])
 		name, ok := cs[fmt.Sprintf("Y%d", n)]
@@ -1045,9 +1056,8 @@ func (b *builder) busNames() {
 	t := func(s string, at Pt) { b.Text(s, at, 2.5) }
 	switch {
 	case st.BusNames && b.v.Decoder: // ТЗ-2026: одна основная шина (от МК до IDT7005, регистров и разъёмов), столбцы, индикатор
-		dxI := xRegs - 238.76
+		dxI := dxInd
 		t("B1", Pt{xBM + 1.27, yTop + 1.27})
-		t("B1", Pt{xR26 + 1.27, 40.64 - 1.27})
 		t("B2", Pt{88.9, kbColY - 3.81})
 		t("B3", Pt{259.08 + dxI + 1.27, 148.59})
 		t("B4", Pt{281.94 + dxI + 5.08 + 1.27, 148.59})
@@ -1081,98 +1091,69 @@ func (b *builder) x2AddrLast() int {
 	return 10
 }
 
-// ---------------------------------------------------------------- ТЗ-2026: правый порт IDT7005 — регистры адреса «головы»
+// ---------------------------------------------------------------- ТЗ-2026: IDT7005 по схеме методички
 
-// Включение буфера (замечание Михалина 14.10.2026: «включение DD10 по прежнему не верно»; ТЗ 2.1: X2 вводится «с независимой
-// 8-разрядной параллельной шины со стробом записи … в двухпортовое ОЗУ — кольцевой буфер»; методичка-2026 с. 14: «со стороны
-// внешнего устройства необходимо сделать шину, которая обеспечивает запись его данных… изменение указателей — на МК, через INT»).
-// Внешнее устройство даёт только данные X2_0…7 и строб. Адрес правого порта A0R–A12R — «голова» из двух регистров 573, их пишет МК
-// (movx по двум свободным выходам дешифратора, Load = ИЛИ-НЕ(CS, WR)). Строб: CER = OER = R/WR ← ~{X2stb} (строб — запись байта по
-// «голове»; вне строба порт не выбран) и INT1 — обработчик сдвигает «голову» и перезаписывает регистры.
+// Включение буфера (замечания Михалина 06.10–19.10.2026; ответ 19.10: «нельзя выходы включать к источнику; кто управляет буфером?
+// какие операции слева и справа должны быть по ТЗ?; DD11, DD12 не требуются»). Буфером управляет МК: оба порта выбираются CS_buf
+// и получают адрес с шины МК (рис. Прил. А методички). Слева — только чтение МК (OEL ← RD, R/WL = 1), справа — только запись X2
+// (R/WR ← WR, OER = 1, данные — с разъёма X2): обработчик INT1 по стробу X2 делает movx-запись по адресу «головы», и в ячейку
+// попадает байт X2 с разъёма. M/S = 1 (одна микросхема — master), выходы BUSY и INT свободны (не на питании); на +5 В только
+// входы (R/WL, SEM, OER). Адресных линий — по объёму буфера V, старшие A обоих портов — на землю.
 const (
-	xR26  = 269.24 // шина справа от IDT7005 (правый порт, регистры адреса, индикатор)
-	xRegs = 292.1  // столбец регистров адреса (и регистра индикатора под ними): входы D — в 10,16 от шины xR26 (номер вывода и метка не слипаются)
-	xQ26  = 314.96 // шина выходов регистров адреса и разъёмов X2, Y (в 10,16 от выводов Q)
-	xCn26 = 327.66 // выводы разъёмов
+	xR26  = 269.24 // шина справа от IDT7005
+	xCn26 = 281.94 // выводы разъёмов X2, Y — в 12,7 от шины
 )
 
-var (
-	nCSal = "~{CS_al}" // регистр адреса правого порта A0R–A7R
-	nCSah = "~{CS_ah}" // регистр адреса правого порта A8R–A12R
-)
-
-func (b *builder) idtRight26(u *Comp) {
-	// CE, R/W правого порта ← строб: при строб = 0 — запись байта X2 по адресу «головы», при 1 — порт не выбран; OE = 1 — правый
-	// порт только пишет: выходы ни на фронтах строба, ни при записи навстречу данным внешнего устройства не открываются
+func (b *builder) idt26(u *Comp) {
+	n := b.v.BufLines
+	if n <= 0 || n > 13 {
+		n = 13
+	}
+	// левый порт — МК, только чтение
+	b.tapLeft(u.Pin("59"), xBI, nCSbuf)
+	b.tapLeft(u.Pin("62"), xBI, nRD)
+	xl := u.Pin("61").X - 2.54
+	// R/WL, SEML, M/S → +5 В (входы): у каждого свой знак — общая вертикаль шла бы мимо свободных BUSY и INT, как будто и они на питании
+	for _, p := range []string{"61", "60", "40"} {
+		b.Wire(u.Pin(p), Pt{xl, u.Pin(p).Y})
+		b.Power("+5V", Pt{xl, u.Pin(p).Y}, 90)
+	}
+	b.nc(u.Pin("42"), u.Pin("43")) // BUSYL, INTL — выходы, свободны
+	dl := []string{"63", "64", "1", "2", "3", "4", "6", "7"}
+	for i, p := range dl {
+		b.tapLeft(u.Pin(p), xBI, fmt.Sprintf("AD%d", i))
+	}
+	// правый порт — запись X2 по WR МК
 	xs := u.Pin("22").X + 2.54
-	b.tapRight(u.Pin("22"), xR26, nX2stb)
-	b.tapRight(u.Pin("20"), xR26, nX2stb)
-	b.Wire(u.Pin("19"), Pt{xs, u.Pin("19").Y})
-	b.Power("+5V", Pt{xs, u.Pin("19").Y}, 270)
-	// BUSYR, SEMR → +5 В (slave, семафоры не используются); знак вбок — не вниз и не на шину
-	b.Wire(u.Pin("39"), Pt{xs, u.Pin("39").Y}, Pt{xs, u.Pin("21").Y})
-	b.Wire(u.Pin("21"), Pt{xs, u.Pin("21").Y})
-	b.Power("+5V", Pt{xs, u.Pin("39").Y}, 270)
-	b.nc(u.Pin("38"))
-	for i := 0; i <= 12; i++ {
-		b.tapRight(u.Pin(strconv.Itoa(37-i)), xR26, fmt.Sprintf("A%dR", i))
+	b.tapRight(u.Pin("22"), xR26, nCSbuf)
+	b.tapRight(u.Pin("20"), xR26, nWR)
+	for _, p := range []string{"19", "21"} { // OER, SEMR → +5 В (входы); знак вбок — не вниз и не на шину
+		b.Wire(u.Pin(p), Pt{xs, u.Pin(p).Y})
+		b.Power("+5V", Pt{xs, u.Pin(p).Y}, 270)
 	}
+	b.nc(u.Pin("39"), u.Pin("38")) // BUSYR, INTR — выходы, свободны
 	dr := []string{"10", "11", "12", "14", "15", "16", "17", "18"}
-	for i, n := range dr {
-		b.tapRight(u.Pin(n), xR26, fmt.Sprintf("X2_%d", i))
+	for i, p := range dr {
+		b.tapRight(u.Pin(p), xR26, fmt.Sprintf("X2_%d", i))
 	}
-
-	// регистры адреса: данные — с шины xR26, выходы — в шину xQ26 (она через yH2 — та же шина, что у выводов A0R–A12R)
-	ra := b.role("regAL", b.latch573("DD12", Pt{xRegs, 62.23}))
-	rb := b.role("regAH", b.latch573("DD13", Pt{xRegs, 113.03}))
-	for k, r := range []*Comp{ra, rb} {
-		for i := 0; i < 8; i++ {
-			b.tapLeft(r.Pin(strconv.Itoa(2+i)), xR26, fmt.Sprintf("AD%d", i))
-			q := r.Pin(strconv.Itoa(19 - i))
-			switch {
-			case k == 0:
-				b.tapRight(q, xQ26, fmt.Sprintf("A%dR", i))
-			case i <= 4:
-				b.tapRight(q, xQ26, fmt.Sprintf("A%dR", 8+i))
-			default:
-				b.nc(q)
-			}
+	// адрес: A0…A(n−1) — с шины на оба порта, старшие — на землю (оба порта)
+	for i := 0; i <= 12; i++ {
+		pl, pr := u.Pin(strconv.Itoa(44+i)), u.Pin(strconv.Itoa(37-i))
+		if i < n {
+			b.tapLeft(pl, xBI, fmt.Sprintf("A%d", i))
+			b.tapRight(pr, xR26, fmt.Sprintf("A%d", i))
+			continue
 		}
-		b.tapLeft(r.Pin("11"), xR26, []string{"LdAL", "LdAH"}[k])
+		b.Wire(pl, Pt{xl, pl.Y})
+		b.Wire(pr, Pt{xs, pr.Y})
 	}
-
-	// вентили Load под IDT7005 (столбец IDT): входы — с шины xBD, выходы — в шину xR26
-	for k, g := range []struct {
-		role       string
-		unit       int
-		out, a, bb string
-		cs, ld     string
-		y          float64
-	}{
-		{"norInd", 2, "4", "5", "6", nCSind, "LdInd", 147.32},
-		{"norAL", 3, "10", "8", "9", nCSal, "LdAL", 162.56},
-		{"norAH", 4, "13", "11", "12", nCSah, "LdAH", 177.8},
-	} {
-		_ = k
-		at := Pt{243.84, g.y}
-		c := b.role(g.role, b.Sym("74HC02", "DD1", "74HC02", at, SymOpt{Unit: g.unit,
-			RefAt: ptr(Pt{at.X - 5.08, at.Y - 6.6}), RefJust: "left", HideVal: true}))
-		b.tapLeft(c.Pin(g.a), xBD, g.cs)
-		b.tapLeft(c.Pin(g.bb), xBD, nWR)
-		b.tapRight(c.Pin(g.out), xR26, g.ld)
+	if n < 13 {
+		top, bot := u.Pin(strconv.Itoa(44+n)).Y, u.Pin("56").Y
+		b.Wire(Pt{xl, top}, Pt{xl, bot})
+		b.Wire(Pt{xs, top}, Pt{xs, bot})
+		b.gnd(Pt{xl, bot})
+		b.gnd(Pt{xs, bot})
 	}
-}
-
-// csFree — два младших свободных выхода дешифратора под регистры адреса правого порта (как variant.decoderCS).
-func (b *builder) csFree() (lo, hi string) {
-	used := map[string]bool{b.v.CS.Buf: true, b.v.CS.Y2: true, b.v.CS.Ind: true, b.v.CS.Kb: true}
-	var free []string
-	for n := 0; n < 8; n++ {
-		if y := fmt.Sprintf("Y%d", n); !used[y] {
-			free = append(free, y)
-		}
-	}
-	return free[0], free[1]
 }
 
 func (b *builder) placeConn26() {
@@ -1182,7 +1163,7 @@ func (b *builder) placeConn26() {
 		names = append(names, fmt.Sprintf("X2_%d", i))
 	}
 	for i, n := range names {
-		b.tapLeft(cp(x2, 1+i), xQ26, n)
+		b.tapLeft(cp(x2, 1+i), xR26, n)
 	}
 	// подтяжка строба к +5 В: при отключённом разъёме вход INT1 и CE/R/W правого порта не висят (ложные прерывания и записи)
 	sp := cp(x2, 1)
@@ -1197,10 +1178,10 @@ func (b *builder) placeConn26() {
 
 	c := b.conn("xsY", "y", "CONN_Y", "XS3", Pt{xCn26, 86.36})
 	for i, n := range []string{nY1, nY2} {
-		b.tapLeft(cp(c, 1+i), xQ26, n)
+		b.tapLeft(cp(c, 1+i), xR26, n)
 	}
 	for i := 0; i < 8; i++ {
-		b.tapLeft(cp(c, 3+i), xQ26, fmt.Sprintf("Y2_%d", i))
+		b.tapLeft(cp(c, 3+i), xR26, fmt.Sprintf("Y2_%d", i))
 	}
 	gp = cp(c, 11)
 	b.Wire(gp, Pt{gp.X - 1.27, gp.Y}, Pt{gp.X - 1.27, gp.Y + 1.27})
@@ -1215,13 +1196,10 @@ func (b *builder) buses26() {
 	b.Bus(Pt{xBM, yTop}, Pt{xBM, yH2})
 	b.Bus(Pt{xBI, 40.64}, Pt{xBI, yH2})
 	b.Bus(Pt{xBM, yH1}, Pt{xBK, yH1}, Pt{xBK, 177.8})
-	b.Bus(Pt{xBM, yH2}, Pt{xR26, yH2}, Pt{xQ26, yH2})
+	b.Bus(Pt{xBM, yH2}, Pt{xR26, yH2})
 	b.Bus(Pt{xBD, yH2}, Pt{xBD, 218.44})
 	b.Bus(Pt{xBY, 88.9}, Pt{xBY, yH2})
-	b.Bus(Pt{xY2B, 96.52 + 2.54}, Pt{xY2B, yH2})
-	b.Bus(Pt{xR26, 40.64}, Pt{xR26, yH2})
-	b.Bus(Pt{xR26, yH2}, Pt{xR26, 187.96})
-	b.Bus(Pt{xQ26, 38.1}, Pt{xQ26, yH2})
+	b.Bus(Pt{xR26, 38.1}, Pt{xR26, yH2}) // кончается на yH2 — Т-образно, без креста (Михалин 19.10: «крестообразное пересечение шин — отсутствие соединений»)
 }
 
 // notesDY — «Примечания» ниже, если резисторы сегментов разнесены под номиналы (шаг 7,62).

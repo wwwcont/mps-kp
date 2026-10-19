@@ -58,10 +58,17 @@ func peRows(lines []BOMLine) []peItem {
 		if len([]rune(l.Note)) > peNoteMax {
 			note = wrap(l.Note, peNoteMax+6) // две строчки мелким шрифтом в одной клетке
 		}
-		for k, nm := range names {
-			r := peItem{name: nm}
+		refs := wrapRefs(l.Refs, 11) // «DD3, DD8,» / «DD11» — в графе обозначения не теснится (как у принятого листа Казарина)
+		for k := 0; k < max(len(names), len(refs)); k++ {
+			r := peItem{}
+			if k < len(names) {
+				r.name = names[k]
+			}
+			if k < len(refs) {
+				r.ref = refs[k]
+			}
 			if k == 0 {
-				r.ref, r.qty, r.note = l.Refs, fmt.Sprint(l.Qty), note
+				r.qty, r.note = fmt.Sprint(l.Qty), note
 			}
 			rows = append(rows, r)
 		}
@@ -166,4 +173,27 @@ func (s *Sheet) peGrid(peBottom float64) {
 	s.peText("Наименование", Pt{(peX1 + peX2) / 2, top + peHead/2}, "center", false)
 	s.peText("Кол.", Pt{(peX2 + peX3) / 2, top + peHead/2}, "center", false)
 	s.peText("Примечание", Pt{(peX3 + peX4) / 2, top + peHead/2}, "center", false)
+}
+
+// wrapRefs — перечень обозначений по строкам не длиннее n знаков, перенос после запятой.
+func wrapRefs(refs string, n int) []string {
+	parts := strings.Split(refs, ", ")
+	var out []string
+	cur := ""
+	for i, p := range parts {
+		t := p
+		if i < len(parts)-1 {
+			t += ","
+		}
+		switch {
+		case cur == "":
+			cur = t
+		case len([]rune(cur))+1+len([]rune(t)) <= n:
+			cur += " " + t
+		default:
+			out = append(out, cur)
+			cur = t
+		}
+	}
+	return append(out, cur)
 }

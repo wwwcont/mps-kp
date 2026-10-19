@@ -420,6 +420,15 @@ func (s *Sheet) Text(txt string, at Pt, size float64) {
 		L("uuid", Q(s.uuid()))))
 }
 
+// TextBottom — многострочный текст, прижатый нижней строкой к y (растёт вверх).
+func (s *Sheet) TextBottom(txt string, at Pt, size float64) {
+	s.items = append(s.items, L("text", Q(txt),
+		L("exclude_from_sim", A("no")),
+		L("at", F(at.X), F(at.Y), F(0)),
+		L("effects", L("font", L("size", F(size), F(size))), L("justify", A("left"), A("bottom"))),
+		L("uuid", Q(s.uuid()))))
+}
+
 // Graphic — произвольный графический примитив листа (полилиния/прямоугольник).
 func (s *Sheet) Graphic(n *Node) { s.items = append(s.items, n) }
 

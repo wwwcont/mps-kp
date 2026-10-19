@@ -39,7 +39,7 @@ func TestRefs(t *testing.T) {
 		}
 		want := 10
 		if v.Decoder {
-			want = 13 // + регистры адреса правого порта IDT7005
+			want = 11
 		}
 		if len(pkgs["DD"]) != want {
 			t.Errorf("корпусов DD %d, ждём %d", len(pkgs["DD"]), want)

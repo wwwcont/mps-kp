@@ -174,7 +174,7 @@ func idt7005(sym *schgen.Node) {
 		}
 		// GND 5/9/24/41 в символе KiCad стоят в одной точке — разносим, чтобы были видны
 		// все номера (как у VCC 8/13/57); 9/24/41 там passive — делаем power_in;
-		// BUSY: в нашем режиме slave (M/S=0) — вход запрета записи
+		// BUSY: двунаправленный по даташиту (master, M/S=1 — выход флага; slave, M/S=0 — вход запрета записи)
 		for _, k := range n.All("pin") {
 			nm := k.Find("name")
 			if nm != nil && nm.Arg(0) == "GND" {
@@ -185,7 +185,7 @@ func idt7005(sym *schgen.Node) {
 				k.Remove(func(h *schgen.Node) bool { return h.Head() == "hide" })
 			}
 			if nm != nil && strings.Contains(nm.Arg(0), "BUSY") {
-				k.Kids[1] = schgen.A("input")
+				k.Kids[1] = schgen.A("bidirectional")
 			}
 		}
 	})

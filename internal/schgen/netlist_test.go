@@ -22,10 +22,10 @@ var variants = []Variant{
 	// общий анод, стробы на краю P1
 	{Cols: 4, Rows: 3, Anode: true, CS: CSPins{Buf: "P2.3", Y2: "P2.7", Kb: "P2.4", Ind: "P2.5"}, Y1: "P1.6", Y2: "P1.7", KbInt: "INT0", X2Int: "INT1"},
 	// ТЗ-2026: А-12 M=14 — CS с дешифратора, общий анод
-	{Cols: 4, Rows: 3, Anode: true, Decoder: true, CSEn: "P3.4", Filter: "33 н",
+	{Cols: 4, Rows: 3, Anode: true, Decoder: true, CSEn: "P3.4", Filter: "33 н", BufLines: 11,
 		CS: CSPins{Buf: "Y5", Y2: "Y6", Kb: "Y1", Ind: "Y7"}, Y1: "P1.0", Y2: "P1.1", KbInt: "INT0", X2Int: "INT1"},
 	// ТЗ-2026: А-17 M=21 — 3×4, Y2/индикатор на Y1/Y7
-	{Cols: 3, Rows: 4, Decoder: true, CSEn: "P3.4", Filter: "33 н",
+	{Cols: 3, Rows: 4, Decoder: true, CSEn: "P3.4", Filter: "33 н", BufLines: 12,
 		CS: CSPins{Buf: "Y6", Y2: "Y1", Kb: "Y2", Ind: "Y7"}, Y1: "P1.0", Y2: "P1.1", KbInt: "INT0", X2Int: "INT1"},
 }
 
@@ -105,8 +105,19 @@ func TestNetlist(t *testing.T) {
 // slave (M/S = 0), BUSY и SEM не используются. R/WL ← WR — в цепи WR.
 func idtFixed(v Variant) map[int]string {
 	m := map[int]string{22: "GND", 19: "+5V", 21: "+5V", 39: "+5V", 42: "+5V", 60: "+5V", 40: "GND"}
-	if v.Decoder { // ТЗ-2026: CER — в цепи строба X2 (проверяется в INTx2), OER — на +5 В
+	if v.Decoder { // ТЗ-2026 (методичка): CER ← CS_buf, M/S = 1 (master), R/WL = 1; BUSY, INT — выходы, свободны
 		delete(m, 22)
+		delete(m, 39)
+		delete(m, 42)
+		m[40], m[61] = "+5V", "+5V"
+		for i := v.BufLines; v.BufLines > 0 && i <= 12; i++ {
+			m[44+i], m[37-i] = "GND", "GND"
+		}
+	}
+	if !v.Decoder { // M/S = 1, BUSY — свободные выходы
+		delete(m, 39)
+		delete(m, 42)
+		m[40] = "+5V"
 	}
 	if !v.Decoder { // ТЗ-2025: окно 2 КБ, A11/A12 обоих портов на земле
 		m[26], m[25], m[55], m[56] = "GND", "GND", "GND", "GND"
@@ -165,8 +176,11 @@ func expected(v Variant, roles map[string]*Comp) map[string][]string {
 	in244 := []int{2, 4, 6, 8}
 	for i := 0; i < 8; i++ {
 		m := []string{r("mcu", 39-i), r("latchA", 2+i), r("latchY2", 2+i), r("idt", dl[i]), r("latchInd", 2+i)}
-		if i < v.Rows {
+		switch {
+		case i < v.Rows || v.Decoder && i < 4:
 			m = append(m, r("buf", outs244[i]))
+		case v.Decoder: // ТЗ-2026: все 8 выходов 244 на шине данных
+			m = append(m, r("buf", []int{9, 7, 5, 3}[i-4]))
 		}
 		if i < 4 {
 			m = append(m, r("kb173", 14-i))
@@ -185,18 +199,22 @@ func expected(v Variant, roles map[string]*Comp) map[string][]string {
 		// ТЗ-2026: P2 целиком — адрес; A11, A12 — на левый порт IDT; A13..A15 — на дешифратор
 		e["A11"] = []string{r("mcu", 24), r("idt", 55)}
 		e["A12"] = []string{r("mcu", 25), r("idt", 56)}
-		// правый порт: адрес A0R–A12R — с регистров «головы» (DD РГ адреса), данные — разъём X2
+		// методичка: адрес с шины МК на оба порта; A(BufLines)…A12 обоих портов — на землю, у МК эти выводы свободны
+		n := v.BufLines
+		if n == 0 {
+			n = 13
+		}
 		for i := 0; i <= 12; i++ {
 			delete(e, fmt.Sprintf("X2_A%d", i))
-			if i < 8 {
-				e[fmt.Sprintf("A%dR", i)] = []string{r("idt", 37-i), r("regAL", 19-i)}
-			} else {
-				e[fmt.Sprintf("A%dR", i)] = []string{r("idt", 37-i), r("regAH", 19-(i-8))}
+			k := fmt.Sprintf("A%d", i)
+			switch {
+			case i >= n:
+				delete(e, k)
+			case i < 8:
+				e[k] = []string{r("latchA", 19-i), r("idt", 44+i), r("idt", 37-i)}
+			default:
+				e[k] = []string{r("mcu", 13+i), r("idt", 44+i), r("idt", 37-i)}
 			}
-		}
-		for i := 0; i < 8; i++ {
-			k := fmt.Sprintf("AD%d", i)
-			e[k] = append(e[k], r("regAL", 2+i), r("regAH", 2+i))
 		}
 		for i := 13; i <= 15; i++ {
 			e[fmt.Sprintf("A%d", i)] = []string{r("mcu", 13+i), r("dec", i-12)}
@@ -211,18 +229,17 @@ func expected(v Variant, roles map[string]*Comp) map[string][]string {
 				free = append(free, y)
 			}
 		}
-		e["CSal"] = []string{mp(free[0]), r("norAL", 8)}
-		e["CSah"] = []string{mp(free[1]), r("norAH", 11)}
-		e["LoadAL"] = []string{r("norAL", 10), r("regAL", 11)}
-		e["LoadAH"] = []string{r("norAH", 13), r("regAH", 11)}
 	}
 	e["CSbuf"] = []string{mp(v.CS.Buf), r("idt", 59)}
+	if v.Decoder {
+		e["CSbuf"] = append(e["CSbuf"], r("idt", 22))
+	}
 	e["CSy2"] = []string{mp(v.CS.Y2), r("norY2", 2)}
 	e["CSkb"] = []string{mp(v.CS.Kb), r("kb173", 9), r("kb173", 10), r("or", 1)}
 	e["CSind"] = []string{mp(v.CS.Ind), r("norInd", 5)}
 	e["WR"] = []string{r("mcu", 16), r("norY2", 3), r("norInd", 6), r("kb173", 7), r("idt", 61)}
-	if v.Decoder {
-		e["WR"] = append(e["WR"], r("norAL", 9), r("norAH", 12))
+	if v.Decoder { // методичка: R/WL = 1, R/WR ← WR
+		e["WR"] = []string{r("mcu", 16), r("norY2", 3), r("norInd", 6), r("kb173", 7), r("idt", 20)}
 	}
 	e["RD"] = []string{r("mcu", 17), r("idt", 62), r("or", 2)}
 	e["ALE"] = []string{r("mcu", 30), r("latchA", 11)}
@@ -237,8 +254,8 @@ func expected(v Variant, roles map[string]*Comp) map[string][]string {
 	e["INTkb"] = []string{r("mcu", intPin[v.KbInt]), r("and", andOut)}
 	// строб X2 внешнего устройства: запись правым портом (R/WR) и прерывание МК
 	e["INTx2"] = []string{r("mcu", intPin[v.X2Int]), rc("xsX2", 1), r("idt", 20)}
-	if v.Decoder { // ТЗ-2026: CER = OER = R/WR ← строб
-		e["INTx2"] = append(e["INTx2"], r("idt", 22), r("rX2", 2))
+	if v.Decoder { // ТЗ-2026: строб только на INT1 (и подтяжка)
+		e["INTx2"] = []string{r("mcu", intPin[v.X2Int]), rc("xsX2", 1), r("rX2", 2)}
 	}
 	e["OE244"] = []string{r("or", 3), r("buf", 1), r("buf", 19)}
 	e["LoadY2"] = []string{r("norY2", 1), r("latchY2", 11)}

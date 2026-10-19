@@ -126,38 +126,37 @@ func (s *Sheet) BOM(full bool) []BOMLine {
 		}
 		return refNum(refs[i]) < refNum(refs[j])
 	})
+	// одинаковые элементы (наименование и примечание) — одной строкой с количеством и перечнем обозначений, даже если номера не подряд
+	// (общие требования Гольцова 19.10.2026: «в перечне элементов одинаковые элементы пишутся одной строкой с указанием количества
+	// и перечня позиционных обозначений»; так же у принятого листа Казарина: «DD5, DD6, DD11 74AC573 3»)
 	var out []BOMLine
 	group := ""
-	for i := 0; i < len(refs); {
+	done := map[string]bool{}
+	for i := 0; i < len(refs); i++ {
+		if done[refs[i]] {
+			continue
+		}
 		p := pk[refs[i]]
 		prefix := refPrefix(refs[i])
 		if !full && prefix != "DD" && prefix != "XS" {
-			i++
 			continue
 		}
 		name, note := s.bomLine(p.c, p.contacts)
-		// подряд идущие с тем же наименованием — одной строкой
-		j := i
-		for j+1 < len(refs) && refPrefix(refs[j+1]) == prefix && refNum(refs[j+1]) == refNum(refs[j])+1 {
-			n2, nt2 := s.bomLine(pk[refs[j+1]].c, pk[refs[j+1]].contacts)
-			if n2 != name || nt2 != note {
-				break
+		var nums []int
+		for j := i; j < len(refs); j++ {
+			if done[refs[j]] || refPrefix(refs[j]) != prefix {
+				continue
 			}
-			j++
+			if n2, nt2 := s.bomLine(pk[refs[j]].c, pk[refs[j]].contacts); n2 == name && nt2 == note {
+				done[refs[j]] = true
+				nums = append(nums, refNum(refs[j]))
+			}
 		}
 		if prefix != group {
 			group = prefix
 			out = append(out, BOMLine{Group: bomGroups[prefix]})
 		}
-		r := refs[i]
-		switch {
-		case j == i+1:
-			r = refs[i] + ", " + refs[j]
-		case j > i+1:
-			r = refs[i] + "–" + refs[j]
-		}
-		out = append(out, BOMLine{Refs: r, Name: name, Note: note, Qty: j - i + 1})
-		i = j + 1
+		out = append(out, BOMLine{Refs: refList(prefix, nums), Name: name, Note: note, Qty: len(nums)})
 	}
 	return out
 }
@@ -174,4 +173,25 @@ func BOMMarkdown(lines []BOMLine, title string) string {
 		fmt.Fprintf(&b, "| %s | %s | %d | %s |\n", l.Refs, l.Name, l.Qty, l.Note)
 	}
 	return b.String()
+}
+
+// refList — «DD3, DD8, DD11», «C5–C15», «R2, R3»: подряд три и больше — через тире.
+func refList(prefix string, nums []int) string {
+	var parts []string
+	for i := 0; i < len(nums); {
+		j := i
+		for j+1 < len(nums) && nums[j+1] == nums[j]+1 {
+			j++
+		}
+		switch {
+		case j == i:
+			parts = append(parts, fmt.Sprintf("%s%d", prefix, nums[i]))
+		case j == i+1:
+			parts = append(parts, fmt.Sprintf("%s%d", prefix, nums[i]), fmt.Sprintf("%s%d", prefix, nums[j]))
+		default:
+			parts = append(parts, fmt.Sprintf("%s%d–%s%d", prefix, nums[i], prefix, nums[j]))
+		}
+		i = j + 1
+	}
+	return strings.Join(parts, ", ")
 }

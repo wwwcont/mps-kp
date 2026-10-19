@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -187,8 +188,9 @@ func schematic(p *variant.Params, st *variant.Student, out, libPath, wksPath str
 		},
 		Y1: p.Y1Pin, Y2: p.Y2Pin, KbInt: p.KbInt, X2Int: p.X2Int,
 		Decoder: p.CSMode == "decoder", CSEn: p.CSEnPin, Filter: p.FilterCap,
-		Style: schgen.PickStyle(st.Style, fmt.Sprintf("%s|%d", st.GroupFull, p.M)),
-		Date:  st.Date, Student: st.Name, Checker: st.Checker,
+		BufLines: int(math.Ceil(math.Log2(float64(p.V)))), // адресных линий у IDT7005 по объёму буфера V
+		Style:    schgen.PickStyle(st.Style, fmt.Sprintf("%s|%d", st.GroupFull, p.M)),
+		Date:     st.Date, Student: st.Name, Checker: st.Checker,
 	}
 	if !plainSheet {
 		j := schgen.MakeJitter(fmt.Sprintf("%s|%d", st.GroupFull, p.M), p.Rows)
