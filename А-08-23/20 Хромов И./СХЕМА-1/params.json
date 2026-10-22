@@ -1,0 +1,105 @@
+{
+  "year": 2026,
+  "group": "А-08",
+  "m": 20,
+  "k": 6,
+  "student": "Хромов И.",
+  "checker": "Гольцов А.Г.",
+  "g": 8,
+  "cs_mode": "decoder",
+  "cs_en_pin": "P3.4",
+  "x2_rate": 4,
+  "filter_cap": "33 н",
+  "keyboard": "4x3",
+  "cols": 4,
+  "rows": 3,
+  "indicator": "anode",
+  "Y1Pin": "P1.6",
+  "Y2Pin": "P1.7",
+  "KbInt": "INT0",
+  "X2Int": "INT1",
+  "KbIntPin": "P3.2",
+  "X2IntPin": "P3.3",
+  "T1ms": 378,
+  "T2us": 2308,
+  "T3ms": 3220,
+  "V": 1608,
+  "Y1Timer": 0,
+  "Y2Timer": 1,
+  "T3Timer": 0,
+  "T2Reload": 63228,
+  "Y1": {
+    "ms": 378,
+    "tick_ms": 14,
+    "ticks": 27,
+    "reload": 51536,
+    "counter_bits": 8
+  },
+  "T3": {
+    "ms": 3220,
+    "tick_ms": 14,
+    "ticks": 230,
+    "reload": 51536,
+    "counter_bits": 8
+  },
+  "Head": 64,
+  "Tail": 66,
+  "Empty": {
+    "addr": 20,
+    "byte": 34,
+    "pos": 4,
+    "asm": "22h.4"
+  },
+  "Ovf": {
+    "addr": 28,
+    "byte": 35,
+    "pos": 4,
+    "asm": "23h.4"
+  },
+  "Devices": [
+    {
+      "name": "Индикатор",
+      "cs": "Y5",
+      "base": 40960,
+      "win_size": 8192
+    },
+    {
+      "name": "Клавиатура",
+      "cs": "Y6",
+      "base": 49152,
+      "win_size": 8192
+    },
+    {
+      "name": "Буфер (IDT7005)",
+      "cs": "Y3",
+      "base": 24576,
+      "win_size": 8192
+    },
+    {
+      "name": "Регистр Y2",
+      "cs": "Y4",
+      "base": 32768,
+      "win_size": 8192
+    },
+    {
+      "name": "Регистр адреса правого порта (A0–A7)",
+      "cs": "Y0",
+      "base": 0,
+      "win_size": 8192
+    },
+    {
+      "name": "Регистр адреса правого порта (A8–A12)",
+      "cs": "Y1",
+      "base": 8192,
+      "win_size": 8192
+    }
+  ],
+  "Prog2": "чтение из кольцевого буфера",
+  "Prog3": "расчёт Y2 = (8+20+X1+X2) mod 256, запись в регистр, строб T2 (таймер)",
+  "FillTimeS": 402,
+  "CycleUs": 1,
+  "UnusedCS": "Y2, Y7",
+  "Warnings": null,
+  "CrystalMHz": 12,
+  "MinFillNote": ""
+}
