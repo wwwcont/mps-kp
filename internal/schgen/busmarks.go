@@ -93,8 +93,11 @@ func (s *Sheet) busMarks() {
 	}
 	num := map[key]int{}
 	order := append([]mark(nil), marks...)
+	// по точке подхода провода к шине, а не по точке на шине: у вертикальной шины подключения слева левее подключений справа —
+	// сначала все левые сверху вниз, потом правые (Михалин 28.10.2026: «см. линию у МК A8 и ALE — сначала левые подключения,
+	// они левее, а потом правые»)
 	sort.SliceStable(order, func(i, j int) bool {
-		a, b := order[i].on, order[j].on
+		a, b := order[i].w, order[j].w
 		if math.Abs(a.X-b.X) > 2.54 {
 			return a.X < b.X
 		}
