@@ -1,0 +1,105 @@
+{
+  "year": 2026,
+  "group": "А-06",
+  "m": 9,
+  "k": 2,
+  "student": "Сапон Г.М.",
+  "checker": "Ключанский А.А.",
+  "g": 6,
+  "cs_mode": "decoder",
+  "cs_en_pin": "P3.4",
+  "x2_rate": 4,
+  "filter_cap": "33 н",
+  "keyboard": "3x4",
+  "cols": 3,
+  "rows": 4,
+  "indicator": "cathode",
+  "Y1Pin": "P1.2",
+  "Y2Pin": "P1.3",
+  "KbInt": "INT0",
+  "X2Int": "INT1",
+  "KbIntPin": "P3.2",
+  "X2IntPin": "P3.3",
+  "T1ms": 256,
+  "T2us": 1776,
+  "T3ms": 2550,
+  "V": 1290,
+  "Y1Timer": 0,
+  "Y2Timer": 1,
+  "T3Timer": 0,
+  "T2Reload": 63760,
+  "Y1": {
+    "ms": 256,
+    "tick_ms": 2,
+    "ticks": 128,
+    "reload": 63536,
+    "counter_bits": 8
+  },
+  "T3": {
+    "ms": 2550,
+    "tick_ms": 2,
+    "ticks": 1275,
+    "reload": 63536,
+    "counter_bits": 16
+  },
+  "Head": 56,
+  "Tail": 58,
+  "Empty": {
+    "addr": 9,
+    "byte": 33,
+    "pos": 1,
+    "asm": "21h.1"
+  },
+  "Ovf": {
+    "addr": 15,
+    "byte": 33,
+    "pos": 7,
+    "asm": "21h.7"
+  },
+  "Devices": [
+    {
+      "name": "Индикатор",
+      "cs": "Y2",
+      "base": 16384,
+      "win_size": 8192
+    },
+    {
+      "name": "Клавиатура",
+      "cs": "Y4",
+      "base": 32768,
+      "win_size": 8192
+    },
+    {
+      "name": "Буфер (IDT7005)",
+      "cs": "Y1",
+      "base": 8192,
+      "win_size": 8192
+    },
+    {
+      "name": "Регистр Y2",
+      "cs": "Y3",
+      "base": 24576,
+      "win_size": 8192
+    },
+    {
+      "name": "Регистр адреса правого порта (A0–A7)",
+      "cs": "Y0",
+      "base": 0,
+      "win_size": 8192
+    },
+    {
+      "name": "Регистр адреса правого порта (A8–A12)",
+      "cs": "Y5",
+      "base": 40960,
+      "win_size": 8192
+    }
+  ],
+  "Prog2": "запись в кольцевой буфер",
+  "Prog3": "вывод символа на индикатор + гашение по T3 (таймер)",
+  "FillTimeS": 322.5,
+  "CycleUs": 1,
+  "UnusedCS": "Y6, Y7",
+  "Warnings": null,
+  "CrystalMHz": 12,
+  "MinFillNote": ""
+}
