@@ -1,0 +1,151 @@
+; Сапелин А.С., А-12-23, 18, v1
+; ---- vars.inc (вклеен mpscode) ----
+; Параметры варианта А-12, M=18 (ТЗ 2026). Сгенерировано mpsgen — не править руками.
+
+VAR_M        EQU 18            ; номер варианта
+VAR_G        EQU 12            ; номер группы
+Y2_CONST     EQU 30            ; G+M: Y2 = (Y2_CONST + X1 + X2) mod 256
+
+; --- адреса внешних устройств (movx) ---
+ADR_IND      EQU 0E000h        ; индикатор, CS Y7
+ADR_KB       EQU 2000h        ; клавиатура: запись столбцов / чтение строк, CS Y1
+ADR_Y2       EQU 0C000h        ; регистр Y2, CS Y6
+BUF_START    EQU 0A000h        ; первая ячейка буфера, CS Y5
+BUF_END      EQU 0A6F8h        ; первая ячейка ЗА буфером (точка заворота)
+BUF_SIZE     EQU 1784
+
+; --- клавиатура 4x3 и индикатор ---
+KB_COLS      EQU 4             ; столбцы Col1…Col4 — биты D0…D3 при записи в ADR_KB (0 — столбец опрашивается)
+KB_ROWS      EQU 3             ; строки Row1…Row3 — биты D0…D2 при чтении ADR_KB (0 — замкнута); старшие биты не определены — маскировать
+IND_OFF      EQU 0FFh           ; индикатор погашен (общий анод: 0 зажигает сегмент; D0…D7 = a…g, dp)
+
+; --- внутреннее ОЗУ ---
+HEAD_L       EQU 47h          ; «голова», младший байт
+HEAD_H       EQU 48h          ; «голова», старший байт
+TAIL_L       EQU 49h          ; «хвост», младший байт
+TAIL_H       EQU 4Ah          ; «хвост», старший байт
+F_EMPTY      BIT 12h          ; флаг пустоты буфера (22h.2)
+F_OVF        BIT 1Eh          ; флаг переполнения буфера (23h.6)
+
+; --- выводы ---
+PIN_Y1       BIT P1.4         ; строб Y1, активный 0
+PIN_Y2       BIT P1.5         ; строб Y2, активный 0
+PIN_CSEN     BIT P3.4         ; CS_EN: разрешение дешифратора CS (1 — CS активны)
+
+; --- таймеры (кварц 12 МГц) ---
+T2_RELOAD_H  EQU 0F6h          ; строб Y2 2452 мкс, Timer1
+T2_RELOAD_L  EQU 6Ch
+TICK_H       EQU 0FCh          ; тик 1 мс для Y1/T3, Timer0
+TICK_L       EQU 18h
+Y1_TICKS     EQU 371           ; T1 = 371 мс
+T3_TICKS     EQU 3240          ; T3 = 3240 мс
+; ---- конец vars.inc ----
+DSEG AT 30h
+TicksLo: DS 1
+TicksHi: DS 1
+CSEG AT 0h
+        sjmp START
+org 03h
+        nop
+        reti
+org 0bh
+        ljmp T0Isr
+org 13h
+        nop
+        reti
+org 1bh
+        nop
+        reti
+org 23h
+        nop
+        reti
+org 2bh
+START:
+        mov SP, #07h            ; переменные 30h и выше не пересекаются со стеком
+        mov IE, #0
+        setb PIN_CSEN           ; разрешить запись в регистр индикации
+        clr TR0
+        clr TF0                 ; удалить прежний запрос переполнения
+        mov TMOD, #01h          ; Timer0 считает 16-разрядные интервалы
+        mov TicksLo, #0
+        mov TicksHi, #0          ; до первого вызова отсчёт не ведётся
+        mov DPTR, #ADR_IND
+        mov A, #IND_OFF
+        movx @DPTR, A           ; при включении все сегменты погашены
+        setb ET0
+        setb EA
+        mov A, #5               ; демонстрационный вывод цифры 5
+        call Show ; %proc%
+        jmp $ ; %stop%
+
+; Назначение: Show выводит символ с автоматическим гашением через T3.
+; Вход: A — код 0–9 или 10 для E; остальные коды гасят индикатор.
+; Выход: символ в регистре ADR_IND, заново запущенный отсчёт T3 либо остановка.
+; Портит: A, DPTR, PSW; обновляет TicksLo, TicksHi и Timer0.
+Show:
+        clr ET0                 ; исключить IRQ со старым счётчиком во время замены символа
+        clr TR0
+        clr TF0                 ; повторный вызов отменяет предыдущий срок
+        mov TicksLo, #0
+        mov TicksHi, #0
+        cjne A, #11, ShowRange
+        sjmp ShowOff
+ShowRange:
+        jnc ShowOff             ; код за границей таблицы означает выключение
+        mov DPTR, #Segments
+        movc A, @A+DPTR          ; код символа преобразуется в набор сегментов
+        xrl A, #IND_OFF          ; общий анод требует активного нуля
+        mov DPTR, #ADR_IND
+        movx @DPTR, A           ; регистр удержит изображение после освобождения шины
+        mov TicksLo, #LOW T3_TICKS
+        mov TicksHi, #HIGH T3_TICKS ; число тиков берётся из параметров варианта
+        mov TH0, #TICK_H
+        mov TL0, #TICK_L         ; первый тик начинается с полной длительности
+        setb ET0
+        setb TR0                ; процедура возвращается, время отсчитывается в IRQ
+        ret
+ShowOff:
+        mov DPTR, #ADR_IND
+        mov A, #IND_OFF
+        movx @DPTR, A           ; неверный код сразу выключает все сегменты
+        setb ET0
+        ret
+
+; Назначение: T0Isr отсчитывает тики и выключает индикатор в конце T3.
+; Вход: TicksLo:TicksHi и текущее состояние Timer0.
+; Выход: счётчик уменьшен; при нуле Timer0 остановлен и индикатор погашен.
+; Портит: Timer0 и счётчик; A, PSW и DPTR восстанавливаются перед RETI.
+T0Isr:
+        push ACC                ; обработчик может прервать работу с любым символом
+        push PSW
+        push DPL
+        push DPH                ; сохранить адрес устройства, использованный основной программой
+        clr TR0
+        mov A, TL0              ; учесть время между переполнением и входом в обработчик
+        add A, #(TICK_L+7)      ; компенсировать семь циклов остановленного таймера
+        mov TL0, A
+        mov A, TH0
+        addc A, #TICK_H
+        mov TH0, A
+        setb TR0                ; задержка обслуживания не накапливается в каждом тике
+        mov A, TicksLo
+        jnz TickDec
+        dec TicksHi             ; заём при уменьшении 16-разрядного счётчика
+TickDec:
+        dec TicksLo
+        mov A, TicksLo
+        orl A, TicksHi
+        jnz TickDone            ; ненулевой остаток сохраняет текущую индикацию
+        clr TR0
+        mov DPTR, #ADR_IND
+        mov A, #IND_OFF
+        movx @DPTR, A           ; срок T3 истёк
+TickDone:
+        pop DPH
+        pop DPL
+        pop PSW
+        pop ACC
+        reti
+Segments:
+        db 03Fh,006h,05Bh,04Fh,066h,06Dh,07Dh,007h,07Fh,06Fh,079h
+END
