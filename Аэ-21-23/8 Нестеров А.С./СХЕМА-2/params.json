@@ -1,0 +1,105 @@
+{
+  "year": 2026,
+  "group": "Аэ-21",
+  "m": 8,
+  "k": 1,
+  "student": "Нестеров А.С.",
+  "checker": "Михалин С.Н.",
+  "g": 21,
+  "cs_mode": "decoder",
+  "cs_en_pin": "P3.4",
+  "x2_rate": 4,
+  "filter_cap": "33 н",
+  "keyboard": "4x3",
+  "cols": 4,
+  "rows": 3,
+  "indicator": "cathode",
+  "Y1Pin": "P1.1",
+  "Y2Pin": "P1.2",
+  "KbInt": "INT0",
+  "X2Int": "INT1",
+  "KbIntPin": "P3.2",
+  "X2IntPin": "P3.3",
+  "T1ms": 283,
+  "T2us": 1661,
+  "T3ms": 2595,
+  "V": 1880,
+  "Y1Timer": 0,
+  "Y2Timer": 1,
+  "T3Timer": 0,
+  "T2Reload": 63875,
+  "Y1": {
+    "ms": 283,
+    "tick_ms": 1,
+    "ticks": 283,
+    "reload": 64536,
+    "counter_bits": 16
+  },
+  "T3": {
+    "ms": 2595,
+    "tick_ms": 1,
+    "ticks": 2595,
+    "reload": 64536,
+    "counter_bits": 16
+  },
+  "Head": 81,
+  "Tail": 83,
+  "Empty": {
+    "addr": 8,
+    "byte": 33,
+    "pos": 0,
+    "asm": "21h.0"
+  },
+  "Ovf": {
+    "addr": 29,
+    "byte": 35,
+    "pos": 5,
+    "asm": "23h.5"
+  },
+  "Devices": [
+    {
+      "name": "Индикатор",
+      "cs": "Y2",
+      "base": 16384,
+      "win_size": 8192
+    },
+    {
+      "name": "Клавиатура",
+      "cs": "Y3",
+      "base": 24576,
+      "win_size": 8192
+    },
+    {
+      "name": "Буфер (IDT7005)",
+      "cs": "Y7",
+      "base": 57344,
+      "win_size": 8192
+    },
+    {
+      "name": "Регистр Y2",
+      "cs": "Y1",
+      "base": 8192,
+      "win_size": 8192
+    },
+    {
+      "name": "Регистр адреса правого порта (A0–A7)",
+      "cs": "Y0",
+      "base": 0,
+      "win_size": 8192
+    },
+    {
+      "name": "Регистр адреса правого порта (A8–A12)",
+      "cs": "Y4",
+      "base": 32768,
+      "win_size": 8192
+    }
+  ],
+  "Prog2": "чтение из кольцевого буфера",
+  "Prog3": "расчёт Y2 = (21+8+X1+X2) mod 256, запись в регистр, строб T2 (таймер)",
+  "FillTimeS": 470,
+  "CycleUs": 1,
+  "UnusedCS": "Y5, Y6",
+  "Warnings": null,
+  "CrystalMHz": 12,
+  "MinFillNote": ""
+}

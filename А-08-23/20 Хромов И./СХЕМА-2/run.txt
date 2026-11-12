@@ -1,0 +1,4 @@
+СХЕМА-2
+workflow: КМ-1 схема и перечень, запуск https://github.com/wwwcont/mps-kp/actions/runs/42607001393
+коммит: 64be4265cff4d7ba9f6a638d411adc2c4912da7e
+дата: 2026-11-09 11:13 UTC

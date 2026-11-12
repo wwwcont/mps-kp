@@ -1,0 +1,14 @@
+{
+  "group": "А-06",
+  "group_full": "А-06-23",
+  "m": 9,
+  "student": "Сапон Г.М.",
+  "checker": "Ключанский А.А.",
+  "style_req": "",
+  "style": "авто",
+  "date": "08.11.26",
+  "fixes": "26bc96e9c4bc",
+  "nick": "a06_sapon_gm",
+  "commit": "69b486f2c501e24d14b29f1102fed6a45c4d0f93",
+  "dest": "А-06-23/9 Сапон Г.М."
+}

@@ -1,0 +1,142 @@
+; Сапелин А.С., А-12-23, 18, v1
+; ---- vars.inc (вклеен mpscode) ----
+; Параметры варианта А-12, M=18 (ТЗ 2026). Сгенерировано mpsgen — не править руками.
+
+VAR_M        EQU 18            ; номер варианта
+VAR_G        EQU 12            ; номер группы
+Y2_CONST     EQU 30            ; G+M: Y2 = (Y2_CONST + X1 + X2) mod 256
+
+; --- адреса внешних устройств (movx) ---
+ADR_IND      EQU 0E000h        ; индикатор, CS Y7
+ADR_KB       EQU 2000h        ; клавиатура: запись столбцов / чтение строк, CS Y1
+ADR_Y2       EQU 0C000h        ; регистр Y2, CS Y6
+BUF_START    EQU 0A000h        ; первая ячейка буфера, CS Y5
+BUF_END      EQU 0A6F8h        ; первая ячейка ЗА буфером (точка заворота)
+BUF_SIZE     EQU 1784
+
+; --- клавиатура 4x3 и индикатор ---
+KB_COLS      EQU 4             ; столбцы Col1…Col4 — биты D0…D3 при записи в ADR_KB (0 — столбец опрашивается)
+KB_ROWS      EQU 3             ; строки Row1…Row3 — биты D0…D2 при чтении ADR_KB (0 — замкнута); старшие биты не определены — маскировать
+IND_OFF      EQU 0FFh           ; индикатор погашен (общий анод: 0 зажигает сегмент; D0…D7 = a…g, dp)
+
+; --- внутреннее ОЗУ ---
+HEAD_L       EQU 47h          ; «голова», младший байт
+HEAD_H       EQU 48h          ; «голова», старший байт
+TAIL_L       EQU 49h          ; «хвост», младший байт
+TAIL_H       EQU 4Ah          ; «хвост», старший байт
+F_EMPTY      BIT 12h          ; флаг пустоты буфера (22h.2)
+F_OVF        BIT 1Eh          ; флаг переполнения буфера (23h.6)
+
+; --- выводы ---
+PIN_Y1       BIT P1.4         ; строб Y1, активный 0
+PIN_Y2       BIT P1.5         ; строб Y2, активный 0
+PIN_CSEN     BIT P3.4         ; CS_EN: разрешение дешифратора CS (1 — CS активны)
+
+; --- таймеры (кварц 12 МГц) ---
+T2_RELOAD_H  EQU 0F6h          ; строб Y2 2452 мкс, Timer1
+T2_RELOAD_L  EQU 6Ch
+TICK_H       EQU 0FCh          ; тик 1 мс для Y1/T3, Timer0
+TICK_L       EQU 18h
+Y1_TICKS     EQU 371           ; T1 = 371 мс
+T3_TICKS     EQU 3240          ; T3 = 3240 мс
+; ---- конец vars.inc ----
+DSEG AT 30h
+CSEG AT 0h
+        sjmp START
+org 03h
+        call KbScan ; %proc%
+        reti
+org 0bh
+        nop
+        reti
+org 13h
+        nop
+        reti
+org 1bh
+        nop
+        reti
+org 23h
+        nop
+        reti
+org 2bh
+START:
+        mov SP, #07h            ; стек размещается ниже переменных и битовых флагов
+        mov PSW, #0             ; используется нулевой банк регистров
+        setb PIN_CSEN           ; разрешить выбор устройств внешней шины
+        mov DPTR, #ADR_KB
+        clr A
+        movx @DPTR, A           ; все столбцы готовы обнаружить новое нажатие
+        setb IT0                ; однократный запрос по спаду INT0
+        clr IE0                 ; исключить запрос от начальной установки столбцов
+        setb EX0
+        setb EA
+        jmp $ ; %stop%
+
+; Назначение: KbScan проверяет все контакты матрицы и считает нажатые клавиши.
+; Вход: строки и столбцы клавиатуры, подключённой к ADR_KB.
+; Выход: A — код 0–11 единственной клавиши либо 0FFh при ином числе нажатий.
+; Портит: A; остальные используемые регистры сохраняются.
+KbScan:
+        push PSW
+        push DPL
+        push DPH
+        push AR0
+        push AR1
+        push AR2
+        push AR3
+        push AR4
+        push AR5
+        mov R0, #0FEh           ; бегущий ноль начинает со столбца Col1
+        mov R1, #0              ; индекс первого контакта столбца в таблице
+        mov R2, #0              ; пока ни одна клавиша не обнаружена
+        mov R3, #0FFh
+KbColumn:
+        mov DPTR, #ADR_KB
+        mov A, R0
+        movx @DPTR, A           ; выбрать один столбец
+        movx A, @DPTR
+        cpl A
+        anl A, #(1 SHL KB_ROWS)-1 ; оставить только реально подключённые строки
+        mov R4, A
+        mov R5, #KB_ROWS
+KbRow:
+        mov A, R4
+        rrc A                   ; очередная строка попадает в перенос
+        mov R4, A
+        jnc KbNextRow
+        inc R2                  ; считаются все замкнутые контакты
+        mov DPTR, #KeyMap
+        mov A, R1
+        movc A, @A+DPTR
+        mov R3, A
+KbNextRow:
+        inc R1
+        djnz R5, KbRow
+        mov A, R0
+        rl A
+        mov R0, A               ; перенести активный ноль на следующий столбец
+        cjne R1, #(KB_COLS*KB_ROWS), KbColumn
+        mov DPTR, #ADR_KB
+        clr A
+        movx @DPTR, A           ; вернуть все столбцы в состояние ожидания
+        clr IE0                 ; убрать фронты, возникшие во время сканирования
+        mov A, R2
+        cjne A, #1, KbInvalid
+        mov A, R3
+        sjmp KbDone
+KbInvalid:
+        mov A, #0FFh
+KbDone:
+        pop AR5
+        pop AR4
+        pop AR3
+        pop AR2
+        pop AR1
+        pop AR0
+        pop DPH
+        pop DPL
+        pop PSW
+        ret
+KeyMap:
+        db 1,4,7,2,5,8,3,6,9,10,11,0
+END
