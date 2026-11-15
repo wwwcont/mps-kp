@@ -8,21 +8,26 @@ import (
 type Rect struct{ X0, Y0, X1, Y1 float64 }
 
 // DrawingGroups — состав узлов для рисунков ПЗ1.
+var drawingRoles = map[string][]string{
+	"mcu":   {"mcu", "latchA", "zq", "cX1", "cX2", "rRst", "cRst"},
+	"dec":   {"dec"},
+	"kb":    {"kb173", "buf", "and", "or", "vd", "sb", "pull", "ser", "ck"},
+	"ind":   {"latchInd", "norInd", "rseg", "hg"},
+	"idt":   {"idt", "xsX2", "rX2", "orBuf", "regAL", "regAH", "norAL", "norAH"},
+	"y2":    {"latchY2", "norY2", "xsY"},
+	"power": {"xsPwr", "filter"},
+}
+
+func drawingRole(role, prefix string) bool {
+	return role == prefix || strings.HasPrefix(role, prefix) && len(role) > len(prefix) && role[len(prefix)] >= '0' && role[len(prefix)] <= '9'
+}
+
 func (s *Sheet) drawingGroups() map[string][]*Comp {
-	groups := map[string][]string{
-		"mcu":   {"mcu", "latchA", "zq", "cX1", "cX2", "rRst", "cRst"},
-		"dec":   {"dec"},
-		"kb":    {"kb173", "buf", "and", "or", "vd", "sb", "pull", "ser", "ck"},
-		"ind":   {"latchInd", "norInd", "rseg", "hg"},
-		"idt":   {"idt", "xsX2", "rX2", "orBuf", "regAL", "regAH", "norAL", "norAH"},
-		"y2":    {"latchY2", "norY2", "xsY"},
-		"power": {"xsPwr", "filter"},
-	}
-	out := make(map[string][]*Comp, len(groups))
-	for group, prefixes := range groups {
+	out := make(map[string][]*Comp, len(drawingRoles))
+	for group, prefixes := range drawingRoles {
 		for role, c := range s.Roles {
 			for _, prefix := range prefixes {
-				if role == prefix || strings.HasPrefix(role, prefix) && len(role) > len(prefix) && role[len(prefix)] >= '0' && role[len(prefix)] <= '9' {
+				if drawingRole(role, prefix) {
 					out[group] = append(out[group], c)
 				}
 			}

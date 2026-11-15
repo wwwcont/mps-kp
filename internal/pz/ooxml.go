@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 )
 
@@ -269,17 +270,36 @@ func NormalizeOOXML(x string) string {
 // pageBreaks — «с новой страницы» у заголовков разделов (Heading1) и «СОДЕРЖАНИЯ» (TOCHeading): свойство стиля pageBreakBefore
 // простые просмотрщики docx игнорируют (всё идёт сплошняком), поэтому — явный разрыв первым элементом самого заголовка
 // (понимают все; в отличие от отдельного абзаца с разрывом, не даёт пустого листа в Word). В стилях pageBreakBefore убирается.
-func pageBreaks(name, x string) string {
+func pageBreaks(name, x string, hasAbstract bool) string {
 	if name == "word/styles.xml" {
 		return strings.NewReplacer("<w:pageBreakBefore/>", "", "<w:pageBreakBefore />", "").Replace(x)
 	}
 	if name != "word/document.xml" {
 		return x
 	}
+	var front string
+	if hasAbstract {
+		i := strings.LastIndex(x, "<w:sectPr")
+		toc := `<w:p><w:pPr><w:pStyle w:val="TOCHeading"/>`
+		if i >= 0 && strings.Contains(x, toc) {
+			if end := strings.Index(x[i:], "</w:sectPr>"); end >= 0 {
+				section := x[i : i+end+len("</w:sectPr>")]
+				refs := regexp.MustCompile(`<w:footerReference[^>]*?/>`)
+				front = refs.ReplaceAllStringFunc(section, func(ref string) string {
+					if strings.Contains(ref, `w:type="first"`) {
+						return strings.Replace(ref, `w:type="first"`, `w:type="default"`, 1)
+					}
+					return ""
+				})
+				x = x[:i] + regexp.MustCompile(`<w:titlePg[^>]*?/>`).ReplaceAllString(x[i:], "")
+				x = strings.Replace(x, toc, `<w:p><w:pPr><w:spacing w:line="20" w:lineRule="exact"/>`+front+`</w:pPr></w:p>`+toc, 1)
+			}
+		}
+	}
 	var b strings.Builder
 	for {
 		i := -1
-		for _, st := range []string{`<w:pStyle w:val="Heading1"`, `<w:pStyle w:val="TOCHeading"`} {
+		for _, st := range []string{`<w:pStyle w:val="Heading1"`, `<w:pStyle w:val="TOCHeading"`, `<w:pStyle w:val="SectionHeading"`} {
 			if j := strings.Index(x, st); j >= 0 && (i < 0 || j < i) {
 				i = j
 			}
@@ -295,13 +315,15 @@ func pageBreaks(name, x string) string {
 		}
 		k += i + len("</w:pPr>")
 		b.WriteString(x[:k])
-		b.WriteString(`<w:r><w:br w:type="page"/></w:r>`)
+		if front == "" || !strings.HasPrefix(x[i:], `<w:pStyle w:val="TOCHeading"`) {
+			b.WriteString(`<w:r><w:br w:type="page"/></w:r>`)
+		}
 		x = x[k:]
 	}
 }
 
 // normalizeDocx переписывает word/*.xml в docx с упорядоченными элементами.
-func normalizeDocx(path string, media map[string][]byte) error {
+func normalizeDocx(path string, media map[string][]byte, hasAbstract bool) error {
 	zr, err := zip.OpenReader(path)
 	if err != nil {
 		return err
@@ -321,7 +343,7 @@ func normalizeDocx(path string, media map[string][]byte) error {
 			return err
 		}
 		if strings.HasPrefix(f.Name, "word/") && strings.HasSuffix(f.Name, ".xml") && !strings.Contains(f.Name, "_rels") {
-			b = []byte(NormalizeOOXML(pageBreaks(f.Name, string(b))))
+			b = []byte(NormalizeOOXML(pageBreaks(f.Name, string(b), hasAbstract)))
 		}
 		// картинки сырого OOXML: ссылки rId<Имя> → media/<файл>; тип png объявлен
 		if f.Name == "word/_rels/document.xml.rels" {

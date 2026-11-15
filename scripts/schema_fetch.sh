@@ -2,7 +2,7 @@
 # Готовит папку сборки студента для КМ-2/КМ-3: куда класть результаты (.dest) и схему, по которой собирать.
 #   scripts/schema_fetch.sh <ник> [N] [--optional]
 # Берёт из ветки results папку <группа>/<M> <ФИО>/СХЕМА-N (пусто — последнюю), распаковывает в build/<группа>/<M>/,
-# сверяет её meta.json с students/<ник>/variant.yaml (bin/mpsgen -verify) и пишет .schema = «СХЕМА-N».
+# сверяет её данные с students/<ник>/variant.yaml и проверяет цепи буфера (bin/mpsgen -verify) и пишет .schema = «СХЕМА-N».
 # Нет схемы: ошибка «сначала КМ-1»; с --optional — только предупреждение (КМ-3 проверяет код и без схемы).
 set -euo pipefail
 nick="${1:?ник студента}"; want="${2:-}"; optional="${3:-}"
@@ -19,7 +19,7 @@ echo "$nick" > "$build/.nick"
 rm -f "$build/.schema"
 
 miss() {
-  if [ "$optional" = "--optional" ]; then echo "::warning::$nick: $1 — собираю без привязки к схеме"; exit 0; fi
+  if [ "$optional" = "--optional" ] && [ -z "$want" ]; then echo "::warning::$nick: $1 — собираю без привязки к схеме"; exit 0; fi
   echo "::error::$nick: $1"; exit 1
 }
 git fetch -q --depth=1 origin results 2>/dev/null || miss "ветки results ещё нет — сначала «КМ-1 схема и перечень» для $nick"
@@ -28,9 +28,11 @@ runs="$(git -c core.quotePath=false ls-tree --name-only FETCH_HEAD "$dest/" 2>/d
 n="${want:-$(echo "$runs" | tail -1)}"
 echo "$runs" | grep -qx "$n" || miss "нет СХЕМА-$n (есть: $(echo $runs | sed 's/ /, /g'))"
 src="$dest/СХЕМА-$n"
+git cat-file -e "FETCH_HEAD:$src/meta.json" 2>/dev/null || miss "СХЕМА-$n старого формата (без meta.json)"
+rm -f "$build"/fragment-*.png
 # файлы схемы → папка сборки (как будто КМ-1 собрал её здесь)
 git archive FETCH_HEAD "$src" | tar -x -C "$build" --strip-components=3
 [ -f "$build/meta.json" ] || miss "СХЕМА-$n старого формата (без meta.json) — прогони «КМ-1 схема и перечень», будет новая"
-bin/mpsgen -student "$y" -verify "$build/meta.json" || { echo "::error::$nick: СХЕМА-$n устарела (см. выше)"; exit 3; }
+bin/mpsgen -student "$y" -verify "$build/meta.json" || { echo "::error::$nick: СХЕМА-$n не подходит для сборки (см. выше)"; exit 3; }
 echo "СХЕМА-$n" > "$build/.schema"
 echo "$nick: $src → $build"

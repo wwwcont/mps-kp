@@ -93,6 +93,20 @@ func main() {
 				"\nпрогони «КМ-1 схема и перечень» для этого ника — будет новая СХЕМА-N")
 			os.Exit(3)
 		}
+		tb, err := variant.LoadTable(*table)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		p, err := variant.Compute(tb, st)
+		dir := filepath.Dir(*verify)
+		if err == nil && p.CSMode == "decoder" {
+			err = verifyBuffer(dir, p)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(3)
+		}
 		return
 	}
 	plainSheet = *plain
@@ -106,6 +120,28 @@ func main() {
 		fmt.Fprintln(os.Stderr, "ошибка:", err)
 		os.Exit(1)
 	}
+}
+
+func verifyBuffer(dir string, current *variant.Params) error {
+	var saved variant.Params
+	var sheet struct{ Refs map[string][2]string }
+	for name, dst := range map[string]any{"params.json": &saved, "sheet.json": &sheet} {
+		b, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			return err
+		}
+		if err := json.Unmarshal(b, dst); err != nil {
+			return fmt.Errorf("%s: %w", name, err)
+		}
+	}
+	if saved.Group != current.Group || saved.M != current.M || saved.Year != current.Year || saved.CSMode != current.CSMode || saved.V <= 0 {
+		return fmt.Errorf("params.json не соответствует группе, варианту или году ТЗ")
+	}
+	archived, err := schgen.LoadSavedSheet(filepath.Join(dir, "schematic.kicad_sch"))
+	if err != nil {
+		return err
+	}
+	return archived.CheckBuffer(sheet.Refs, int(math.Ceil(math.Log2(float64(saved.V)))))
 }
 
 // loadStudent — студент из variant.yaml или из флагов (-group/-m/-name), с умолчаниями.

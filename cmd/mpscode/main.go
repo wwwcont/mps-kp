@@ -94,12 +94,20 @@ func main() {
 		die(fmt.Errorf("нет файлов progN.a51 (заготовки: -init)"))
 	}
 	sort.Strings(files)
-	out := filepath.Join(*outroot, st.Dir(), "code")
+	dir := filepath.Join(*outroot, st.Dir())
+	if *student != "" {
+		p, varsInc, err = render.ArchivedVariant(dir, p)
+		die(err)
+	}
+	out := filepath.Join(dir, "code")
 	die(os.MkdirAll(out, 0o755))
 	die(os.WriteFile(filepath.Join(out, "vars.inc"), []byte(varsInc), 0o644))
 
 	var md strings.Builder
 	fmt.Fprintf(&md, "# Проверка программ: %s, %s, вариант %d\n\n", p.Student, st.GroupFull, p.M)
+	if schema, err := os.ReadFile(filepath.Join(dir, ".schema")); *student != "" && err == nil {
+		fmt.Fprintf(&md, "Схема: %s. Адреса и константы взяты из её vars.inc.\n\n", strings.TrimSpace(string(schema)))
+	}
 	md.WriteString("Проверено mpscode: сборка (asm51, байты сверяются с MCU 8051 IDE), правила робота (ТЗ-2026, разд. 2.2, рис. 7), сценарии во встроенном эмуляторе 8051 (emu51, сверен с ucsim s51) с моделями устройств схемы. " +
 		"Робот МЭИ может проверять иначе — «✅» здесь не гарантия «принято», но «❌» почти наверняка ошибка.\n\n")
 	failed := false

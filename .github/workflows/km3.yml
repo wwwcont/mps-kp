@@ -99,7 +99,7 @@ jobs:
             if ! ls students/"$s"/code/prog[123].a51 >/dev/null 2>&1; then echo "::warning::$s: нет students/$s/code/prog*.a51 — make code-init S=$s"; echo "::endgroup::"; continue; fi
             scripts/schema_fetch.sh "$s" "$SCHEMA" --optional || { status=1; echo "::endgroup::"; continue; }
             bin/mpscode -student "$f" || status=1
-            bin/mpspz -student "$f" -doc pz2 || echo "::warning::ПЗ2 для $s не собралась"
+            bin/mpspz -student "$f" -doc pz2 || { echo "::error::ПЗ2 для $s не собралась"; status=1; }
             echo "::endgroup::"
           done
           echo "status=$status" >> "$GITHUB_OUTPUT"

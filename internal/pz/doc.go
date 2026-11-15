@@ -22,6 +22,7 @@ type Doc struct {
 	b          strings.Builder
 	h1, h2, h3 int
 	fig, tab   int
+	formula    int
 	Dir        string            // папка сборки (рисунки кладутся сюда)
 	Student    map[string]string // текст студента по ид
 	Fills      []Fill
@@ -76,18 +77,11 @@ func (d *Doc) H1(title string, num bool) {
 	if num {
 		d.h1++
 		d.h2 = 0
-		if d.Style.FigBySection {
-			d.fig, d.tab = 0, 0
-		}
-		dot := ""
-		if d.Style.H1Center {
-			dot = "."
-		}
-		d.w("\n# %d%s %s {-}\n\n", d.h1, dot, esc(title))
-		d.toc = append(d.toc, tocEntry{1, fmt.Sprintf("%d%s %s", d.h1, dot, title)})
+		d.w("\n# %d. %s {-}\n\n", d.h1, esc(title))
+		d.toc = append(d.toc, tocEntry{1, fmt.Sprintf("%d. %s", d.h1, title)})
 		return
 	}
-	d.w("\n# %s {-}\n\n", esc(title))
+	d.Styled("SectionHeading", esc(title))
 	if title != "АННОТАЦИЯ" {
 		d.toc = append(d.toc, tocEntry{1, title})
 	}
@@ -97,18 +91,14 @@ func (d *Doc) H1(title string, num bool) {
 func (d *Doc) H2(title string) {
 	d.h2++
 	d.h3 = 0
-	dot := ""
-	if d.Style.H1Center {
-		dot = "."
-	}
-	d.w("\n## %d.%d%s %s {-}\n\n", d.h1, d.h2, dot, esc(title))
-	d.toc = append(d.toc, tocEntry{2, fmt.Sprintf("%d.%d%s %s", d.h1, d.h2, dot, title)})
+	d.w("\n## %d.%d. %s {-}\n\n", d.h1, d.h2, esc(title))
+	d.toc = append(d.toc, tocEntry{2, fmt.Sprintf("%d.%d. %s", d.h1, d.h2, title)})
 }
 
 // H3 — пункт «N.M.K Название».
 func (d *Doc) H3(title string) {
 	d.h3++
-	d.w("\n### %d.%d.%d %s {-}\n\n", d.h1, d.h2, d.h3, esc(title))
+	d.w("\n### %d.%d.%d. %s {-}\n\n", d.h1, d.h2, d.h3, esc(title))
 }
 
 // P — абзац (markdown разрешён: **жирный**, *курсив*).
@@ -138,13 +128,10 @@ func (d *Doc) label(n int) string {
 	if d.appendixNo > 0 {
 		return fmt.Sprintf("%s.%d", appLetters[d.appendixNo-1], n)
 	}
-	if d.Style.FigBySection && d.h1 > 0 {
-		return fmt.Sprintf("%d.%d", d.h1, n)
-	}
 	return fmt.Sprint(n)
 }
 
-// Table — таблица с подписью над ней («Таблица N — …» или «Таблица N» справа + название по центру). Возвращает номер.
+// Table — таблица с номером справа и названием по центру. Возвращает номер.
 func (d *Doc) Table(caption string, head []string, rows [][]string) string {
 	return d.TableW(caption, head, rows, nil)
 }
@@ -153,12 +140,8 @@ func (d *Doc) Table(caption string, head []string, rows [][]string) string {
 func (d *Doc) TableW(caption string, head []string, rows [][]string, widths []int) string {
 	d.tab++
 	n := d.label(d.tab)
-	if d.Style.TabRight {
-		d.Styled("TableNum", "Таблица "+n)
-		d.Styled("TableCaption", esc(caption))
-	} else {
-		d.Styled("TableCaption", "Таблица "+n+" — "+esc(caption))
-	}
+	d.Styled("TableNum", "Таблица "+n)
+	d.Styled("TableCaption", esc(caption))
 	d.w("\n")
 	line := func(cells []string) {
 		d.w("|")
@@ -200,8 +183,11 @@ func (d *Doc) Figure(caption, file string, widthCm float64) string {
 	return n
 }
 
-// Formula — формула по центру с номером справа не делаем (ГОСТ допускает без номера, если нет ссылок).
-func (d *Doc) Formula(s string) { d.Styled("Center", esc(s)) }
+// Formula uses a center tab for the expression and a right tab for its number.
+func (d *Doc) Formula(s string) {
+	d.formula++
+	d.w("\n```{=openxml}\n<w:p><w:pPr><w:pStyle w:val=\"Formula\"/></w:pPr><w:r><w:tab/><w:t>%s</w:t><w:tab/><w:t>(%d)</w:t></w:r></w:p>\n```\n\n", xmlEsc(s), d.formula)
+}
 
 // Code — листинг моноширинным шрифтом.
 func (d *Doc) Code(text string) {
@@ -292,7 +278,7 @@ func (d *Doc) Appendix(title string) string {
 	letter := appLetters[d.appendixNo]
 	d.appendixNo++
 	d.fig, d.tab = 0, 0
-	d.w("\n# ПРИЛОЖЕНИЕ %s {-}\n\n", letter)
+	d.Styled("SectionHeading", "ПРИЛОЖЕНИЕ "+letter)
 	d.toc = append(d.toc, tocEntry{1, "ПРИЛОЖЕНИЕ " + letter + ". " + title})
 	d.Styled("Center", "**"+esc(title)+"**")
 	return letter

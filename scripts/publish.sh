@@ -29,7 +29,7 @@ for d in "$@"; do
   if ! dest_of "$d" >/dev/null 2>&1; then echo "пропуск $d: неизвестно, чья это папка (нет .dest / meta.json)" >&2; continue; fi
   case "$kind" in
     СХЕМА) [ -f "$d/params.md" ] ;;
-    ПЗ1) [ -d "$d/pz1" ] ;;
+    ПЗ1) [ -f "$d/pz1/report.md" ] ;;
     ПЗ2) [ -d "$d/pz2" ] || [ -d "$d/code" ] ;;
   esac && dirs+=("$d") || echo "пропуск $d: нет результатов $kind" >&2
 done

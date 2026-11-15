@@ -113,10 +113,11 @@ def ok(d):
         left = int(m.group(1)) if m else -1
         docs = [f for f in files if f.endswith(".docx")] + [f for f in files if f.endswith(".pdf")]
         comment(issue, card(2, f"{'✅' if left == 0 else '📝'} Шаг 2 · КМ-2 — ПЗ1 ({run})",
-            files=" · ".join(link(f, ("📄 " if f.endswith(".docx") else "👁 ") + f) for f in docs) + f"\n\n{where}",
+            files=" · ".join(link(f, "Полный перечень элементов (ПЭ3)" if f == "perechen.pdf" else ("📄 " if f.endswith(".docx") else "👁 ") + f) for f in docs) + f"\n\n{where}",
             student=("✅ Все места «ДОПИШИ» заполнены." if left == 0 else
                      f"📝 Осталось мест «ДОПИШИ»: **{left}** — их дописывает нейронка или вы (`pz1.md`, команда `/км2`).") +
-                    f"\n\n✉️ **Сдать КМ-2:** docx → «Сохранить как PDF» → `{short} ПЗ1-v{ver}.pdf` → на почту руководителя, тема «МПС-ПЗ1»; {body}.",
+                    f"\n\n✉️ **Сдать КМ-2:** сохраните ПЗ1 из Word как `{short} ПЗ1-v{ver}.pdf` и приложите полный перечень элементов "+
+                    f"`perechen.pdf`. Отправьте руководителю с темой «МПС-ПЗ1»; {body}.",
             ai=(f"Возьми текущий [`pz1.md`](https://raw.githubusercontent.com/{REPO}/main/students/{nick}/pz/pz1.md), заполни разделы под "
                 "подсказками «✍» своими словами от лица студента и пришли файл целиком: `/км2` + блок ```` ```pz1.md ````. "
                 if left != 0 else "Всё заполнено. ") +

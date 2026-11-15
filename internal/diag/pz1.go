@@ -5,96 +5,124 @@ import (
 	"image"
 )
 
-// Structural — структурная схема МПС по рис. 2 ТЗ: MPM, RAM, ROM сверху, IOU, CPAN, IC снизу, общая шина, X и Y.
+// Structural показывает внешние узлы и их связи с микроконтроллером.
 func Structural(fontTTF []byte, fontMM, stroke float64) (image.Image, error) {
-	c, err := New(160, 72, fontTTF, fontMM, stroke)
+	c, err := New(170, 68, fontTTF, fontMM, stroke)
 	if err != nil {
 		return nil, err
 	}
-	const bw, bh = 30, 14
-	top, bot := []string{"MPM", "RAM", "ROM"}, []string{"IOU", "CPAN", "IC"}
-	xs := []float64{22, 65, 108}
-	busY := 36.0
-	c.Thick(1.6, 12, busY, 150, busY)
-	c.Text("Общая шина", 150, busY-3, 1, 0)
-	for i, x := range xs {
-		c.Box(x, 6, bw, bh, top[i])
-		c.Line(false, x+bw/2, 6+bh, x+bw/2, busY)
-		c.Box(x, 52, bw, bh, bot[i])
-		c.Line(false, x+bw/2, busY, x+bw/2, 52)
-	}
-	// X и Y — у IOU
-	c.Line(true, 2, 55, 22, 55)
-	c.Text("X", 4, 52, 0, 0)
-	c.Line(true, 22, 63, 2, 63)
-	c.Text("Y", 4, 66.5, 0, 0)
+	c.Box(5, 23, 38, 24, "Микро-\nконтроллер")
+	c.Box(72, 3, 42, 15, "Кольцевой буфер")
+	c.Box(72, 27, 42, 17, "Пульт управления")
+	c.Box(72, 53, 42, 13, "Регистр Y2")
+	c.Line(false, 43, 27, 55, 27, 55, 10, 72, 10)
+	c.Line(false, 43, 35, 72, 35)
+	c.Line(false, 43, 43, 55, 43, 55, 59, 72, 59)
+	c.Text("Адрес, данные", 68, 7, 1, 0)
+	c.Line(true, 148, 10, 114, 10)
+	c.Text("X2", 147, 7, 1, 0)
+	c.Line(true, 10, 20, 10, 23)
+	c.Text("X2stb", 12, 18, 0, 0)
+	c.Line(true, 148, 33, 114, 33)
+	c.Text("X1", 147, 30, 1, 0)
+	c.Line(true, 114, 59, 148, 59)
+	c.Text("Y2", 147, 56, 1, 0)
+	c.Line(true, 32, 47, 32, 64)
+	c.Text("Y1stb, Y2stb", 35, 63, 0, 0)
 	return c.Image(), nil
 }
 
-// FuncInfo — подписи функциональной схемы (обозначения по схеме Э3 и вариант).
+// FuncInfo — обозначения из сохранённой Э3 и параметры варианта.
 type FuncInfo struct {
-	MCU, Latch, Dec, Buf, KbCol, KbRow, IndReg, Y2Reg string // «DD1 AT89S53» и т.п.
-	CSBuf, CSKb, CSInd, CSY2                          string // Yn
-	Keyboard, Y1Pin, Y2Pin, CSEn                      string
-	BufAddrLast                                       int
+	MCU, Latch, Dec, Buf, KbCol, KbRow, IndReg, Ind, Y2Reg string
+	CSBuf, CSKb, CSInd, CSY2                               string
+	X2, Out, Keyboard                                      string
+	BufAddrLast, Cols, Rows                                int
 }
 
-// Functional — функциональная схема: МК, защёлка адреса, дешифратор, буфер, пульт (клавиатура, индикатор), регистр Y2.
-func Functional(fi FuncInfo, fontTTF []byte, fontMM, stroke float64) (image.Image, error) {
-	c, err := New(170, 130, fontTTF, fontMM*0.9, stroke)
+// Functional показывает функциональные связи. Одноимённые управляющие сигналы помечены у обоих концов.
+func Functional(fi FuncInfo, fontTTF []byte, stroke float64) (image.Image, error) {
+	c, err := New(252, 154, fontTTF, 3.8, stroke)
 	if err != nil {
 		return nil, err
 	}
-	// МК слева
-	c.Box(4, 18, 34, 92, "Микроконтроллер\n"+fi.MCU+"\n\nINT0 ← клавиатура\nINT1 ← строб X2")
-	// шины
-	busD, busA := 30.0, 44.0
-	c.Thick(1.2, 38, busD, 144, busD)
-	c.Text("AD0–AD7 (данные / младший адрес)", 100, busD-3, 0.5, 0)
-	c.Box(46, 38, 26, 14, "Защёлка\nадреса\n"+fi.Latch)
-	c.Line(true, 59, busD, 59, 38)
-	c.Line(true, 38, 48, 46, 48) // ALE
-	c.Text("ALE", 40, 46, 0, fontMM*0.75)
-	c.Thick(1.2, 72, busA, 98, busA)
-	c.Text(fmt.Sprintf("A0–A%d", fi.BufAddrLast), 87, busA-3, 0.5, 0)
-	c.Line(true, 38, 54.5, 76, 54.5, 76, busA)
-	c.Text(fmt.Sprintf("A8–A%d", fi.BufAddrLast), 40, 53, 0, fontMM*0.7)
-	c.Line(true, 98, busA, 98, 56)
-	// дешифратор
-	c.Box(46, 60, 26, 20, "Дешифратор\n"+fi.Dec)
-	c.Line(true, 38, 66, 46, 66)
-	c.Text("A13–A15", 39, 64, 0, fontMM*0.6)
-	c.Line(true, 38, 76, 46, 76)
-	c.Text(fi.CSEn, 39, 74, 0, fontMM*0.6)
-	// устройства
-	type dev struct {
-		x, dataX  float64
-		title, cs string
+	bundle := func(x, y float64, count int) {
+		c.Line(false, x-1.5, y+1.5, x+1.5, y-1.5)
+		c.Text(fmt.Sprint(count), x+2, y-3.5, 0, 3)
 	}
-	devs := []dev{{80, 102, "Кольцевой буфер\n" + fi.Buf, fi.CSBuf}, {108, 116, "Клавиатура\n" + fi.Keyboard + "\n" + fi.KbCol + ", " + fi.KbRow, fi.CSKb},
-		{136, 144, "Индикатор\n" + fi.IndReg, fi.CSInd}}
-	csY := 92.0
-	for _, d := range devs {
-		c.Box(d.x, 56, 26, 26, d.title)
-		c.Line(true, d.dataX, busD, d.dataX, 56)
-		c.Line(true, d.x+13, csY, d.x+13, 82)
-		c.Text(d.cs, d.x+14, 86, 0, fontMM*0.7)
+	label := func(s string, x, y, align float64) { c.Text(s, x, y, align, 3.1) }
+	c.Box(25, 31, 36, 108, "Микро-\nконтроллер\n"+fi.MCU)
+	c.Box(101, 9, 39, 18, "Защёлка адреса\n"+fi.Latch)
+	c.Box(167, 21, 43, 32, "Двухпортовое ОЗУ\n"+fi.Buf)
+	c.Box(101, 73, 39, 22, "Регистр столбцов\n"+fi.KbCol)
+	c.Box(101, 102, 39, 20, "Буфер строк\n"+fi.KbRow)
+	c.Box(167, 81, 43, 32, "Клавиатура\n"+fi.Keyboard)
+	c.Box(167, 58, 43, 17, "Регистр индикатора\n"+fi.IndReg)
+	c.Box(220, 58, 24, 17, "Индикатор\n"+fi.Ind)
+	c.Box(167, 129, 43, 20, "Регистр Y2\n"+fi.Y2Reg)
+	if fi.Dec != "" {
+		c.Box(101, 47, 39, 19, "Дешифратор\n"+fi.Dec)
+		c.Line(false, 61, 51, 101, 51)
+		label("A13–A15", 64, 47, 0)
+		bundle(91, 51, 3)
+		c.Line(false, 61, 60, 101, 60)
+		label("CS_EN", 64, 57, 0)
+		for i, labelText := range []string{fi.CSBuf + " / CS_buf", fi.CSKb + " / CS_kbd", fi.CSInd + " / CS_ind", fi.CSY2 + " / CS_rgo"} {
+			y := 50.0 + float64(i)*5
+			c.Line(false, 140, y, 164, y)
+			label(labelText, 142, y-2.5, 0)
+		}
 	}
-	c.Line(false, 72, 70, 76, 70, 76, csY, 150, csY)
-	c.Text("CS (Y0–Y7)", 77, csY+3, 0, fontMM*0.7)
-	// регистр Y2 — ниже шины CS
-	c.Box(80, 100, 30, 14, "Регистр Y2\n"+fi.Y2Reg)
-	c.Line(true, 76, csY, 76, 107, 80, 107)
-	c.Text(fi.CSY2, 70, 104, 0, fontMM*0.7)
-	c.Line(true, 110, 107, 124, 107)
-	c.Text("Y2", 126, 107, 0, 0)
-	c.Line(true, 38, 104, 62, 104, 62, 119, 124, 119)
-	c.Text("строб Y2 ("+fi.Y2Pin+")", 126, 119, 0, fontMM*0.75)
-	c.Line(true, 38, 108, 56, 108, 56, 125, 124, 125)
-	c.Text("строб Y1 ("+fi.Y1Pin+")", 126, 125, 0, fontMM*0.75)
-	// X2 от внешнего устройства — во второй порт буфера
-	c.Line(true, 101, 98, 101, 82)
-	c.Text("X2", 102.5, 88, 0, fontMM*0.75)
+
+	c.Line(false, 61, 36, 72, 36, 72, 14, 101, 14)
+	label("AD0–AD7", 75, 10, 0)
+	bundle(94, 14, 8)
+	c.Line(false, 61, 42, 77, 42, 77, 22, 101, 22)
+	label("ALE", 82, 19, 0)
+	c.Line(false, 140, 14, 178, 14, 178, 21)
+	label("A0–A7", 143, 10, 0)
+	bundle(166, 14, 8)
+	c.Line(false, 61, 33, 66, 33, 66, 5, 196, 5, 196, 21)
+	label(fmt.Sprintf("A8–A%d", fi.BufAddrLast), 174, 2.5, 1)
+	bundle(190, 5, fi.BufAddrLast-7)
+	c.Line(false, 72, 36, 72, 139, 167, 139)
+	for _, line := range [][2]float64{{36, 167}, {69, 167}, {84, 101}, {110, 101}} {
+		c.Line(false, 72, line[0], line[1], line[0])
+		c.dc.DrawCircle(72*c.s, line[0]*c.s, 0.65*c.s)
+		c.dc.Fill()
+	}
+	c.Line(false, 210, 67, 220, 67)
+	c.Line(false, 140, 87, 167, 87)
+	c.Line(false, 140, 107, 167, 107)
+	label("Col1…", 143, 83, 0)
+	label("Row1…", 143, 103, 0)
+	bundle(161, 87, fi.Cols)
+	bundle(161, 107, fi.Rows)
+
+	for _, w := range []struct {
+		x1, x2, y float64
+		name      string
+	}{
+		{210, 247, 30, "X2_0–X2_7 (" + fi.X2 + ")"},
+		{2, 25, 94, "X2stb (" + fi.X2 + ")"},
+		{4, 25, 84, "INT0"},
+		{61, 96, 122, "RD"},
+		{61, 96, 130, "WR"},
+		{210, 246, 140, "Y2_0–Y2_7 (" + fi.Out + ")"},
+		{4, 25, 112, "Y1stb"},
+		{4, 25, 122, "Y2stb"},
+		{210, 234, 43, "WR, RD, CS_buf"},
+		{210, 240, 97, "INT0"},
+		{210, 234, 132, "WR, CS_rgo"},
+		{167, 148, 74, "WR, CS_ind"},
+		{101, 78, 92, "WR, CS_kbd"},
+		{101, 78, 119, "RD, CS_kbd"},
+	} {
+		c.Line(false, w.x1, w.y, w.x2, w.y)
+		label(w.name, (w.x1+w.x2)/2, w.y-3.5, 0.5)
+	}
+	bundle(240, 30, 8)
+	bundle(240, 140, 8)
 	return c.Image(), nil
 }
 
@@ -115,6 +143,7 @@ func (t Timing) draw(c *Canvas, y0 float64, write bool) {
 	rows := []string{"ALE", "P2", "P0", "RD"}
 	if write {
 		rows[3] = "WR"
+		rows = append(rows, "X2_0–X2_7")
 	}
 	h := 7.0
 	for i, r := range rows {
@@ -138,18 +167,20 @@ func (t Timing) draw(c *Canvas, y0 float64, write bool) {
 		case "P0":
 			bus(c, X(-40), X(-40)+1, X(ale[1]+t.TLLAX), X(ale[1]+t.TLLAX)+1, y, h, "A0–A7")
 			if write {
-				dv := strobe[0] - 20
+				dv := strobe[1] - t.TQVWH
 				bus(c, X(dv), X(dv)+1, X(strobe[1]+t.TWHQX), X(strobe[1]+t.TWHQX)+1, y, h, "данные МК")
 			} else {
 				dv := strobe[0] + t.TRLDV
 				bus(c, X(dv), X(dv)+1, X(strobe[1]+t.TRHDX+40), X(strobe[1]+t.TRHDX+40)+1, y, h, "данные ОЗУ")
 			}
+		case "X2_0–X2_7":
+			bus(c, X(strobe[0]-35), X(strobe[0]-35)+1, X(end)-1, X(end), y, h, "данные с XS2")
 		default:
 			c.Line(false, X(-40), y, X(strobe[0]), y, X(strobe[0])+1, y+h, X(strobe[1]), y+h, X(strobe[1])+1, y, X(end), y)
 		}
 	}
 	// размеры
-	yd := y0 + 4*14 + 3
+	yd := y0 + float64(len(rows))*14 + 3
 	c.Dim(X(ale[1])-X(0)+X(0), X(ale[1]+t.TLLAX), y0+28-3, fmt.Sprintf("tLLAX ≥ %.0f", t.TLLAX))
 	c.Dim(X(ale[1]), X(strobe[0]), yd, fmt.Sprintf("tLLWL %.0f…%.0f", t.TLLWL, t.TLLWL+100))
 	if write {
@@ -172,7 +203,7 @@ func bus(c *Canvas, xa, xb, xc, xd, y, h float64, label string) {
 // TimingDiagrams — два рисунка: чтение и запись.
 func TimingDiagrams(t Timing, fontTTF []byte, fontMM, stroke float64) (read, write image.Image, err error) {
 	for i, w := range []bool{false, true} {
-		c, e := New(165, 84, fontTTF, fontMM, stroke)
+		c, e := New(165, 84+float64(i)*14, fontTTF, fontMM, stroke)
 		if e != nil {
 			return nil, nil, e
 		}

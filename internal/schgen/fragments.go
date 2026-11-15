@@ -6,11 +6,13 @@ import "strings"
 func (s *Sheet) Drawings() (full string, fragments map[string]string) {
 	dx, dy := s.J.ShiftX, s.J.ShiftY
 	root := s.drawing()
-	full = root.String()
-	fragments = map[string]string{}
-
-	point := func(n *Node) Pt { return Pt{n.Num(0), n.Num(1)} }
 	shifted := func(p Pt) Pt { return Pt{round(p.X + dx), round(p.Y + dy)} }
+	return root.String(), drawingFragments(root, s.drawingGroups(), s.syms, shifted)
+}
+
+func drawingFragments(root *Node, groups map[string][]*Comp, symbols []*Comp, pinPoint func(Pt) Pt) map[string]string {
+	fragments := make(map[string]string, len(groups))
+	point := func(n *Node) Pt { return Pt{n.Num(0), n.Num(1)} }
 	type wire struct {
 		node *Node
 		a, b Pt
@@ -25,14 +27,14 @@ func (s *Sheet) Drawings() (full string, fragments map[string]string) {
 		wires = append(wires, wire{node, a, b})
 	}
 
-	for name, comps := range s.drawingGroups() {
+	for name, comps := range groups {
 		keep := map[*Node]bool{}
 		reached := map[Pt]bool{}
 		var pending []Pt
 		for _, c := range comps {
 			keep[c.node] = true
 			for _, p := range c.pins {
-				pending = append(pending, shifted(p))
+				pending = append(pending, pinPoint(p))
 			}
 		}
 		// Идём по настоящим проводам от выводов узла. Переходы через шины и
@@ -50,10 +52,10 @@ func (s *Sheet) Drawings() (full string, fragments map[string]string) {
 				pending = append(pending, w.a, w.b)
 			}
 		}
-		for _, c := range s.syms {
+		for _, c := range symbols {
 			if strings.HasPrefix(c.Ref, "#") {
 				for _, p := range c.pins {
-					if reached[shifted(p)] {
+					if reached[pinPoint(p)] {
 						keep[c.node] = true
 					}
 				}
@@ -89,5 +91,5 @@ func (s *Sheet) Drawings() (full string, fragments map[string]string) {
 		}
 		fragments[name] = fragment.String()
 	}
-	return full, fragments
+	return fragments
 }

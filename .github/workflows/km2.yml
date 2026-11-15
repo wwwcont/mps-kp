@@ -39,7 +39,7 @@ permissions:
 jobs:
   pz1:
     runs-on: ubuntu-24.04
-    timeout-minutes: 6
+    timeout-minutes: 12
     outputs:
       list: ${{ steps.who.outputs.list }}
     steps:
@@ -70,6 +70,13 @@ jobs:
           curl -sSL -o /tmp/pandoc.deb https://github.com/jgm/pandoc/releases/download/3.11/pandoc-3.11-1-amd64.deb
           sudo dpkg -i /tmp/pandoc.deb >/dev/null
           mkdir -p ~/.fonts && cp fonts/*.ttf ~/.fonts/ && fc-cache -f
+
+      - name: KiCad 10 и poppler для рисунков из сохранённой Э3
+        if: steps.who.outputs.list != ''
+        run: |
+          sudo add-apt-repository -y ppa:kicad/kicad-10.0-releases
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends kicad poppler-utils
 
       - name: LibreOffice — номера страниц и PDF «просмотр» (не поставился — без них, Word допишет)
         if: steps.who.outputs.list != ''
