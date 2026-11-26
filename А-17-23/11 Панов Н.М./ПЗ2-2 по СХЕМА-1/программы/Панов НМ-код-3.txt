@@ -1,0 +1,110 @@
+; Панов Н.М., А-17-23, 11, v1
+; ---- vars.inc (вклеен mpscode) ----
+; Параметры варианта А-17, M=11 (ТЗ 2026). Сгенерировано mpsgen — не править руками.
+
+VAR_M        EQU 11            ; номер варианта
+VAR_G        EQU 17            ; номер группы
+Y2_CONST     EQU 28            ; G+M: Y2 = (Y2_CONST + X1 + X2) mod 256
+
+; --- адреса внешних устройств (movx) ---
+ADR_IND      EQU 0E000h        ; индикатор, CS Y7
+ADR_KB       EQU 4000h        ; клавиатура: запись столбцов / чтение строк, CS Y2
+ADR_Y2       EQU 2000h        ; регистр Y2, CS Y1
+BUF_START    EQU 0C000h        ; первая ячейка буфера, CS Y6
+BUF_END      EQU 0C71Ah        ; первая ячейка ЗА буфером (точка заворота)
+BUF_SIZE     EQU 1818
+
+; --- клавиатура 3x4 и индикатор ---
+KB_COLS      EQU 3             ; столбцы Col1…Col3 — биты D0…D2 при записи в ADR_KB (0 — столбец опрашивается)
+KB_ROWS      EQU 4             ; строки Row1…Row4 — биты D0…D3 при чтении ADR_KB (0 — замкнута); старшие биты не определены — маскировать
+IND_OFF      EQU 00h           ; индикатор погашен (общий катод: 1 зажигает сегмент; D0…D7 = a…g, dp)
+
+; --- внутреннее ОЗУ ---
+HEAD_L       EQU 4Bh          ; «голова», младший байт
+HEAD_H       EQU 4Ch          ; «голова», старший байт
+TAIL_L       EQU 4Dh          ; «хвост», младший байт
+TAIL_H       EQU 4Eh          ; «хвост», старший байт
+F_EMPTY      BIT 0Bh          ; флаг пустоты буфера (21h.3)
+F_OVF        BIT 1Ch          ; флаг переполнения буфера (23h.4)
+
+; --- выводы ---
+PIN_Y1       BIT P1.4         ; строб Y1, активный 0
+PIN_Y2       BIT P1.5         ; строб Y2, активный 0
+PIN_CSEN     BIT P3.4         ; CS_EN: разрешение дешифратора CS (1 — CS активны)
+
+; --- таймеры (кварц 12 МГц) ---
+T2_RELOAD_H  EQU 0F6h          ; строб Y2 2347 мкс, Timer1
+T2_RELOAD_L  EQU 0D5h
+TICK_H       EQU 0FCh          ; тик 1 мс для Y1/T3, Timer0
+TICK_L       EQU 18h
+Y1_TICKS     EQU 307           ; T1 = 307 мс
+T3_TICKS     EQU 2685          ; T3 = 2685 мс
+; ---- конец vars.inc ----
+DSEG AT 30h
+X1:     DS 1                    ; цифра с клавиатуры (0 — Y2 пассивен)
+X2:     DS 1                    ; отсчёт из буфера
+CSEG AT 0h
+        sjmp START
+org 03h ; "заглушка" для INT0
+        nop
+        reti
+org 0bh ; "заглушка" для Tmr0_ovf
+        nop
+        reti
+org 13h ; "заглушка" для INT1
+        nop
+        reti
+org 1bh                         ; Timer1 — истекло время строба Y2
+        clr TR1                 ; останавливаем таймер
+        setb PIN_Y2             ; строб снова пассивен (1)
+        reti
+org 23h ; "заглушка" для UART
+        nop
+        reti
+org 2bh
+START:
+; Инициализация МК **********************************************
+        mov SP, #07h
+        setb PIN_CSEN           ; дешифратор CS включён
+        setb PIN_Y2             ; строб Y2 пока не активен
+        anl TMOD, #0Fh          ; сохраняем режим Timer0
+        orl TMOD, #10h          ; Timer1 — 16-битный режим 1
+        setb ET1                ; прерывание по переполнению Timer1
+        setb EA                 ; разрешаем прерывания
+        mov X1, #3              ; пример входных данных
+        mov X2, #200
+        call Y2Out ; %proc%
+        jmp $ ; %stop%
+
+; Y2Out — расчёт и выдача Y2 = (G+M+X1+X2) mod 256; при X1=0 Y2=0.
+; Вход: X1, X2 в ОЗУ. Выход: регистр Y2; PIN_Y2 = 0 на T2 мкс
+; (окончание строба выполняет обработчик Timer1).
+; Портит: A, DPTR, PSW (сохраняются в стеке).
+Y2Out:
+        push PSW
+        push ACC
+        push DPL
+        push DPH
+        mov A, X1
+        jz Y2Zero               ; X1 = 0 — пассивное состояние
+        mov A, #Y2_CONST        ; G + M
+        add A, X1
+        add A, X2               ; перенос отбрасывается: результат mod 256
+        sjmp Y2Write
+Y2Zero:
+        clr A                   ; Y2 = 0
+Y2Write:
+        mov DPTR, #ADR_Y2
+        movx @DPTR, A           ; сначала данные в регистр Y2
+        clr TR1                 ; перезапуск, если прошлый строб ещё шёл
+        mov TH1, #T2_RELOAD_H
+        mov TL1, #T2_RELOAD_L
+        clr TF1                 ; старый запрос переполнения не нужен
+        clr PIN_Y2              ; начало строба
+        setb TR1
+        pop DPH
+        pop DPL
+        pop ACC
+        pop PSW
+        ret
+END

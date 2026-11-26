@@ -1,0 +1,93 @@
+{
+  "year": 2026,
+  "group": "А-17",
+  "m": 6,
+  "k": 6,
+  "student": "Иванников Д.Е.",
+  "checker": "Михалин С.Н.",
+  "g": 17,
+  "cs_mode": "decoder",
+  "cs_en_pin": "P3.4",
+  "x2_rate": 4,
+  "filter_cap": "33 н",
+  "keyboard": "4x3",
+  "cols": 4,
+  "rows": 3,
+  "indicator": "cathode",
+  "Y1Pin": "P1.6",
+  "Y2Pin": "P1.7",
+  "KbInt": "INT0",
+  "X2Int": "INT1",
+  "KbIntPin": "P3.2",
+  "X2IntPin": "P3.3",
+  "T1ms": 257,
+  "T2us": 2197,
+  "T3ms": 2435,
+  "V": 1768,
+  "Y1Timer": 0,
+  "Y2Timer": 1,
+  "T3Timer": 0,
+  "T2Reload": 63339,
+  "Y1": {
+    "ms": 257,
+    "tick_ms": 1,
+    "ticks": 257,
+    "reload": 64536,
+    "counter_bits": 16
+  },
+  "T3": {
+    "ms": 2435,
+    "tick_ms": 1,
+    "ticks": 2435,
+    "reload": 64536,
+    "counter_bits": 16
+  },
+  "Head": 75,
+  "Tail": 77,
+  "Empty": {
+    "addr": 6,
+    "byte": 32,
+    "pos": 6,
+    "asm": "20h.6"
+  },
+  "Ovf": {
+    "addr": 23,
+    "byte": 34,
+    "pos": 7,
+    "asm": "22h.7"
+  },
+  "Devices": [
+    {
+      "name": "Индикатор",
+      "cs": "Y1",
+      "base": 8192,
+      "win_size": 8192
+    },
+    {
+      "name": "Клавиатура",
+      "cs": "Y2",
+      "base": 16384,
+      "win_size": 8192
+    },
+    {
+      "name": "Буфер (IDT7005)",
+      "cs": "Y6",
+      "base": 49152,
+      "win_size": 8192
+    },
+    {
+      "name": "Регистр Y2",
+      "cs": "Y7",
+      "base": 57344,
+      "win_size": 8192
+    }
+  ],
+  "Prog2": "чтение из кольцевого буфера",
+  "Prog3": "вывод символа на индикатор + гашение по T3 (таймер)",
+  "FillTimeS": 442,
+  "CycleUs": 1,
+  "UnusedCS": "Y0, Y3, Y4, Y5",
+  "Warnings": null,
+  "CrystalMHz": 12,
+  "MinFillNote": ""
+}

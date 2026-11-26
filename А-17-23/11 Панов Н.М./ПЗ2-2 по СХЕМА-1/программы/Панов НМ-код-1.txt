@@ -1,0 +1,162 @@
+; Панов Н.М., А-17-23, 11, v1
+; ---- vars.inc (вклеен mpscode) ----
+; Параметры варианта А-17, M=11 (ТЗ 2026). Сгенерировано mpsgen — не править руками.
+
+VAR_M        EQU 11            ; номер варианта
+VAR_G        EQU 17            ; номер группы
+Y2_CONST     EQU 28            ; G+M: Y2 = (Y2_CONST + X1 + X2) mod 256
+
+; --- адреса внешних устройств (movx) ---
+ADR_IND      EQU 0E000h        ; индикатор, CS Y7
+ADR_KB       EQU 4000h        ; клавиатура: запись столбцов / чтение строк, CS Y2
+ADR_Y2       EQU 2000h        ; регистр Y2, CS Y1
+BUF_START    EQU 0C000h        ; первая ячейка буфера, CS Y6
+BUF_END      EQU 0C71Ah        ; первая ячейка ЗА буфером (точка заворота)
+BUF_SIZE     EQU 1818
+
+; --- клавиатура 3x4 и индикатор ---
+KB_COLS      EQU 3             ; столбцы Col1…Col3 — биты D0…D2 при записи в ADR_KB (0 — столбец опрашивается)
+KB_ROWS      EQU 4             ; строки Row1…Row4 — биты D0…D3 при чтении ADR_KB (0 — замкнута); старшие биты не определены — маскировать
+IND_OFF      EQU 00h           ; индикатор погашен (общий катод: 1 зажигает сегмент; D0…D7 = a…g, dp)
+
+; --- внутреннее ОЗУ ---
+HEAD_L       EQU 4Bh          ; «голова», младший байт
+HEAD_H       EQU 4Ch          ; «голова», старший байт
+TAIL_L       EQU 4Dh          ; «хвост», младший байт
+TAIL_H       EQU 4Eh          ; «хвост», старший байт
+F_EMPTY      BIT 0Bh          ; флаг пустоты буфера (21h.3)
+F_OVF        BIT 1Ch          ; флаг переполнения буфера (23h.4)
+
+; --- выводы ---
+PIN_Y1       BIT P1.4         ; строб Y1, активный 0
+PIN_Y2       BIT P1.5         ; строб Y2, активный 0
+PIN_CSEN     BIT P3.4         ; CS_EN: разрешение дешифратора CS (1 — CS активны)
+
+; --- таймеры (кварц 12 МГц) ---
+T2_RELOAD_H  EQU 0F6h          ; строб Y2 2347 мкс, Timer1
+T2_RELOAD_L  EQU 0D5h
+TICK_H       EQU 0FCh          ; тик 1 мс для Y1/T3, Timer0
+TICK_L       EQU 18h
+Y1_TICKS     EQU 307           ; T1 = 307 мс
+T3_TICKS     EQU 2685          ; T3 = 2685 мс
+; ---- конец vars.inc ----
+DSEG AT 30h
+; отдельных переменных нет: состояние опроса держим в регистрах банка 0
+CSEG AT 0h
+        sjmp START
+org 03h                         ; INT0 — нажатие клавиши: обработчик вызывает опрос
+        call KbScan ; %proc%
+        reti
+org 0bh ; "заглушка" для Tmr0_ovf
+        nop
+        reti
+org 13h ; "заглушка" для INT1
+        nop
+        reti
+org 1bh ; "заглушка" для Tmr1_ovf
+        nop
+        reti
+org 23h ; "заглушка" для UART
+        nop
+        reti
+org 2bh
+START:
+; Инициализация МК **********************************************
+        mov SP, #07h
+        setb PIN_CSEN           ; дешифратор CS включён
+        mov DPTR, #ADR_KB
+        clr A
+        movx @DPTR, A           ; все столбцы опущены: нажатие сразу даст INT0
+        setb IT0                ; INT0 — по спаду
+        clr IE0                 ; сбрасываем возможный старый запрос
+        setb EX0                ; разрешаем прерывание клавиатуры
+        setb EA                 ; разрешаем прерывания
+        jmp $ ; %stop%
+
+; KbScan — опрос матрицы клавиатуры 3x4 по столбцам.
+; Вход: нет. Выход: A — код единственной нажатой клавиши (0…9, Т=10, С=11)
+; или 0FFh, если нажато ничего либо две и более клавиш.
+; Портит: A, B, DPTR, PSW; регистры R2–R7 восстанавливаются из стека.
+KbScan:
+        push PSW
+        push B
+        push DPL
+        push DPH
+        push AR2
+        push AR3
+        push AR4
+        push AR5
+        push AR6
+        push AR7
+        mov DPTR, #ADR_KB
+        mov R2, #0              ; число найденных нажатий
+        mov R3, #0FFh           ; код последней найденной клавиши
+        mov R4, #0FEh           ; маска столбцов: 0 — опрашиваемый
+        mov R5, #0              ; номер столбца 0…KB_COLS-1
+KsCol:
+        mov A, R4
+        movx @DPTR, A           ; опускаем только текущий столбец
+        movx A, @DPTR           ; читаем строки
+        anl A, #(1 SHL KB_ROWS) - 1     ; старшие биты шины не подключены
+        xrl A, #(1 SHL KB_ROWS) - 1     ; 1 — строка замкнута
+        mov R6, A               ; битовая карта строк
+        mov R7, #0              ; номер строки
+KsRow:
+        mov A, R6
+        anl A, #1               ; проверяем младшую (текущую) строку
+        jz KsRowNext
+        inc R2                  ; нашли ещё одно нажатие
+        cjne R7, #KB_ROWS - 1, KsCalc
+        ; четвёртая строка: клавиши 0, Т, С
+        mov A, R5
+        jz KsZero
+        cjne A, #1, KsTest
+        mov A, #10              ; «Т»
+        sjmp KsSave
+KsZero:
+        clr A                   ; «0»
+        sjmp KsSave
+KsTest:
+        mov A, #11              ; «С»
+        sjmp KsSave
+KsCalc:
+        ; строки 1–3: код = номер_строки*KB_COLS + номер_столбца + 1
+        mov A, R7
+        mov B, #KB_COLS
+        mul AB
+        add A, R5
+        inc A
+KsSave:
+        mov R3, A
+KsRowNext:
+        mov A, R6
+        rr A                    ; переходим к следующей строке
+        mov R6, A
+        inc R7
+        cjne R7, #KB_ROWS, KsRow
+        mov A, R4
+        rl A                    ; следующий столбец
+        mov R4, A
+        inc R5
+        cjne R5, #KB_COLS, KsCol
+        clr A
+        movx @DPTR, A           ; после опроса все столбцы снова опущены
+        mov A, R3
+        cjne R2, #1, KsBad      ; ровно одно нажатие — отдаём код
+        sjmp KsDone
+KsBad:
+        mov A, #0FFh            ; ничего или несколько клавиш
+KsDone:
+        clr IE0                 ; линия INT0 дёргалась при переборе столбцов
+        pop AR7
+        pop AR6
+        pop AR5
+        pop AR4
+        pop AR3
+        pop AR2
+        pop DPH
+        pop DPL
+        pop B
+        pop PSW
+        ret
+END
